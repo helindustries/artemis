@@ -84,6 +84,11 @@ public:
                     m_Computer = event.computer;
                     m_TimeoutTimer->start(APP_SEEK_TIMEOUT);
                     emit q->searchingApp();
+
+                    // The app list may be complete already, and then no update would come
+                    // to look through it before the timeout
+                    NvComputer* computer = event.computer;
+                    QTimer::singleShot(0, q, [q, computer]() { q->onComputerUpdated(computer); });
                 } else {
                     m_State = StateFailure;
                     QString msg = QObject::tr("Computer %1 has not been paired. "

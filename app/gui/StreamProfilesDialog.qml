@@ -21,7 +21,7 @@ NavigableDialog {
     }
 
     function store(newProfiles) {
-        StreamProfiles.setProfilesForHost(hostUuid, newProfiles)
+        StreamProfiles.setProfilesForHost(hostUuid, hostName, newProfiles)
         reload()
     }
 
@@ -41,6 +41,9 @@ NavigableDialog {
                        .arg(displayModeText(profile.displayMode))
         if (profile.screen) {
             text += qsTr(", on %1").arg(profile.screen)
+        }
+        if (profile.allScreens) {
+            text += qsTr(", starts %1 with all screens").arg(profile.app)
         }
         return text
     }
@@ -204,7 +207,9 @@ NavigableDialog {
                 "fps": StreamingPreferences.fps,
                 "bitrateKbps": StreamingPreferences.bitrateKbps,
                 "displayMode": windowModeName(StreamingPreferences.windowMode),
-                "screen": ""
+                "screen": "",
+                "app": "Desktop",
+                "allScreens": false
             }
 
             nameField.text = profile.name
@@ -213,6 +218,8 @@ NavigableDialog {
             fpsBox.value = profile.fps
             bitrateBox.value = profile.bitrateKbps
             displayModeBox.currentIndex = Math.max(0, ["fullscreen", "borderless", "windowed"].indexOf(profile.displayMode))
+            appBox.editText = profile.app ? profile.app : "Desktop"
+            allScreensBox.checked = profile.allScreens === true || profile.allScreens === "true"
 
             screenBox.currentIndex = 0
             for (var i = 0; i < screens.length; i++) {
@@ -233,7 +240,9 @@ NavigableDialog {
                 "fps": fpsBox.value,
                 "bitrateKbps": bitrateBox.value,
                 "displayMode": ["fullscreen", "borderless", "windowed"][displayModeBox.currentIndex],
-                "screen": screenBox.currentIndex > 0 ? screens[screenBox.currentIndex - 1].name : ""
+                "screen": screenBox.currentIndex > 0 ? screens[screenBox.currentIndex - 1].name : "",
+                "app": appBox.editText.trim() !== "" ? appBox.editText.trim() : "Desktop",
+                "allScreens": allScreensBox.checked
             }
 
             var newProfiles = profilesDialog.profiles.slice()
@@ -347,6 +356,29 @@ NavigableDialog {
                 id: displayModeBox
                 Layout.fillWidth: true
                 model: [qsTr("Fullscreen"), qsTr("Borderless windowed"), qsTr("Windowed")]
+            }
+
+            Item { width: 1; height: 1 }
+            CheckBox {
+                id: allScreensBox
+                text: qsTr("Start with \"Stream on all screens\"")
+                enabled: screenBox.currentIndex > 0
+
+                ToolTip.text: qsTr("Needs a pinned screen: profiles started together each go to their own screen")
+                ToolTip.delay: 1000
+                ToolTip.visible: hovered
+            }
+
+            Label {
+                text: qsTr("App:")
+                enabled: allScreensBox.checked
+            }
+            ComboBox {
+                id: appBox
+                Layout.fillWidth: true
+                editable: true
+                enabled: allScreensBox.checked
+                model: ["Desktop", "Virtual Display"]
             }
         }
     }

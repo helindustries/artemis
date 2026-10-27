@@ -39,7 +39,8 @@ StreamProcessManager::~StreamProcessManager()
     }
 }
 
-void StreamProcessManager::start(const QString& hostName, const QString& appName, const QVariantMap& profile)
+void StreamProcessManager::start(const QString& hostUuid, const QString& hostName, const QString& appName,
+                                 const QVariantMap& profile)
 {
     Stream stream;
     stream.id = QString::number(m_NextId++);
@@ -50,7 +51,7 @@ void StreamProcessManager::start(const QString& hostName, const QString& appName
     stream.socket = nullptr;
     stream.process = new QProcess(this);
 
-    QStringList arguments = { "stream", hostName, appName,
+    QStringList arguments = { "stream", hostUuid.isEmpty() ? hostName : hostUuid, appName,
                               "--control-socket", m_Server.fullServerName(),
                               "--stream-id", stream.id };
     if (profile.value("width").toInt() > 0 && profile.value("height").toInt() > 0) {

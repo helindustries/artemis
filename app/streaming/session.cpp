@@ -1,6 +1,9 @@
 #include "session.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
+#ifdef Q_OS_DARWIN
+#include "streaming/macprocess.h"
+#endif
 #include "backend/richpresencemanager.h"
 #include "backend/quickmenumanager.h"
 #include "backend/servercommandmanager.h"
@@ -2244,6 +2247,9 @@ void Session::execInternal()
                                                     (DualSenseOutputReport *)event.user.data2);
                 break;
             case SDL_CODE_RAISE_WINDOW:
+#ifdef Q_OS_DARWIN
+                MacProcess::activate();
+#endif
                 SDL_RaiseWindow(m_Window);
                 break;
             default:

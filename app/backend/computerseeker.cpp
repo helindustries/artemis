@@ -29,6 +29,15 @@ void ComputerSeeker::start(int timeout)
     // would find the host
     m_ComputerManager->addNewHostManually(m_ComputerName);
     m_ComputerManager->startPolling();
+
+    // A host that is online already sends no state change, so without this a seek by
+    // UUID times out on it. Deferred so computerFound arrives after start() returns,
+    // as it does for a host found by polling.
+    QTimer::singleShot(0, this, [this]() {
+        for (NvComputer* computer : m_ComputerManager->getComputers()) {
+            onComputerUpdated(computer);
+        }
+    });
 }
 
 void ComputerSeeker::onComputerUpdated(NvComputer *computer)
