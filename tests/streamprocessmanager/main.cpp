@@ -57,6 +57,11 @@ static int runFakeStream(const QStringList& arguments)
         record.write(arguments.join('\n').toUtf8());
         record.close();
     }
+    QFile pidRecord(qEnvironmentVariable("FAKE_STREAM_ARGS") + ".pid");
+    if (pidRecord.open(QIODevice::WriteOnly)) {
+        pidRecord.write(QByteArray::number(QCoreApplication::applicationPid()));
+        pidRecord.close();
+    }
 
     QString socketName = arguments.value(arguments.indexOf("--control-socket") + 1);
     QString streamId = arguments.value(arguments.indexOf("--stream-id") + 1);
@@ -153,7 +158,14 @@ int main(int argc, char* argv[])
     // A stream that dies on its own leaves the list
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
     waitFor([&]() { return manager.data(manager.index(0), StreamProcessManager::StateRole) == "streaming"; }, 10000);
-    QProcess::execute("pkill", { "-KILL", "-f", QCoreApplication::applicationFilePath() + " stream" });
+    QFile pidRecord(record + ".pid");
+    QString pid = pidRecord.open(QIODevice::ReadOnly) ? QString::fromUtf8(pidRecord.readAll()) : QString();
+    expect(!pid.isEmpty(), "expected the fake stream to record its process id");
+#ifdef Q_OS_WIN32
+    QProcess::execute("taskkill", { "/F", "/PID", pid });
+#else
+    QProcess::execute("kill", { "-KILL", pid });
+#endif
     expect(waitFor([&]() { return manager.count() == 0; }, 5000), "expected a killed stream to leave the list");
 
     printf("%s\n", s_Failures == 0 ? "all checks passed" : "checks failed");
