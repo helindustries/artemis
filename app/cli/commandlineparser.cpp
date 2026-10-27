@@ -371,6 +371,9 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addChoiceOption("capture-system-keys", "capture system key combos", m_CaptureSysKeysModeMap.keys());
     parser.addChoiceOption("video-codec", "video codec", m_VideoCodecMap.keys());
     parser.addChoiceOption("video-decoder", "video decoder", m_VideoDecoderMap.keys());
+    parser.addValueOption("control-socket", "local socket of the Artemis window controlling this stream");
+    parser.addValueOption("stream-id", "identifier this stream reports on the control socket");
+    parser.addValueOption("screen", "name of the screen to stream on");
 
     if (!parser.parse(args)) {
         parser.showError(parser.errorText());
@@ -506,6 +509,10 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
         preferences->videoDecoderSelection = mapValue(m_VideoDecoderMap, parser.getChoiceOptionValue("video-decoder"));
     }
 
+    m_ControlSocket = parser.value("control-socket");
+    m_StreamId = parser.value("stream-id");
+    m_Screen = parser.value("screen");
+
     // This method will not return and terminates the process if --version or
     // --help is specified
     parser.handleHelpAndVersionOptions();
@@ -531,6 +538,21 @@ QString StreamCommandLineParser::getHost() const
 QString StreamCommandLineParser::getAppName() const
 {
     return m_AppName;
+}
+
+QString StreamCommandLineParser::getControlSocket() const
+{
+    return m_ControlSocket;
+}
+
+QString StreamCommandLineParser::getStreamId() const
+{
+    return m_StreamId;
+}
+
+QString StreamCommandLineParser::getScreen() const
+{
+    return m_Screen;
 }
 
 ListCommandLineParser::ListCommandLineParser()

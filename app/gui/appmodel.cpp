@@ -39,6 +39,18 @@ QString AppModel::getRunningAppName()
     return nullptr;
 }
 
+QString AppModel::getComputerName()
+{
+    QReadLocker lock(&m_Computer->lock);
+    return m_Computer->name;
+}
+
+QString AppModel::getComputerUuid()
+{
+    QReadLocker lock(&m_Computer->lock);
+    return m_Computer->uuid;
+}
+
 Session* AppModel::createSessionForApp(int appIndex)
 {
     Q_ASSERT(appIndex < m_VisibleApps.count());

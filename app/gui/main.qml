@@ -9,6 +9,7 @@ import AutoUpdateChecker 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
+import StreamProcessManager 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -316,6 +317,33 @@ ApplicationWindow {
             }
 
             NavigableToolButton {
+                id: streamsButton
+                // Stream processes run the CLI view; only the main window lists streams
+                visible: initialView === "qrc:/gui/PcView.qml" && StreamProcessManager.count > 0
+
+                iconSource: "qrc:/res/play_arrow_FILL1_wght700_GRAD200_opsz48.svg"
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Running streams: %1").arg(visible ? StreamProcessManager.count : 0) +
+                              (streamsShortcut.nativeText ? (" (" + streamsShortcut.nativeText + ")") : "")
+
+                Shortcut {
+                    id: streamsShortcut
+                    sequence: "Ctrl+Shift+S"
+                    enabled: initialView === "qrc:/gui/PcView.qml"
+                    onActivated: streamsDialog.open()
+                }
+
+                onClicked: streamsDialog.open()
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+
+            NavigableToolButton {
                 id: addPcButton
                 visible: qmltypeof(stackView.currentItem, "PcView")
 
@@ -511,6 +539,10 @@ ApplicationWindow {
             // start streaming, so fake it by wiping out the text each time.
             text = ""
         }
+    }
+
+    StreamsDialog {
+        id: streamsDialog
     }
 
     NavigableDialog {

@@ -23,5 +23,7 @@
         <file>gui/ServerCommands.qml</file>
         <file>gui/QuickMenu.qml</file>
         <file>gui/Toast.qml</file>
+        <file>gui/StreamProfilesDialog.qml</file>
+        <file>gui/StreamsDialog.qml</file>
     </qresource>
 </RCC>

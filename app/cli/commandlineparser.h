@@ -63,10 +63,16 @@ public:
 
     QString getHost() const;
     QString getAppName() const;
+    QString getControlSocket() const;
+    QString getStreamId() const;
+    QString getScreen() const;
 
 private:
     QString m_Host;
     QString m_AppName;
+    QString m_ControlSocket;
+    QString m_StreamId;
+    QString m_Screen;
     QMap<QString, StreamingPreferences::WindowMode> m_WindowModeMap;
     QMap<QString, StreamingPreferences::AudioConfig> m_AudioConfigMap;
     QMap<QString, StreamingPreferences::VideoCodecConfig> m_VideoCodecMap;
