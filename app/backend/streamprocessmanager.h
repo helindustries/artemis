@@ -33,8 +33,9 @@ public:
     ~StreamProcessManager();
 
     // profile is a map as StreamProfiles stores it; an empty map streams with the
-    // global settings
-    Q_INVOKABLE void start(const QString& hostName, const QString& appName, const QVariantMap& profile);
+    // global settings. The host is found by hostUuid, hostName is what the list shows.
+    Q_INVOKABLE void start(const QString& hostUuid, const QString& hostName, const QString& appName,
+                           const QVariantMap& profile);
     Q_INVOKABLE void stop(int row);
     Q_INVOKABLE void raise(int row);
 

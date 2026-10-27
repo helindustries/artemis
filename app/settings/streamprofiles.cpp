@@ -1,13 +1,16 @@
 #include "streamprofiles.h"
 
 #include <QGuiApplication>
+#include <QMap>
 #include <QScreen>
+#include <QSet>
 #include <QSettings>
 
 #define SER_STREAMPROFILES "streamprofiles"
+#define SER_HOSTNAMES "hostnames"
 
 static const QStringList k_ProfileKeys = {
-    "name", "width", "height", "fps", "bitrateKbps", "displayMode", "screen"
+    "name", "width", "height", "fps", "bitrateKbps", "displayMode", "screen", "app", "allScreens"
 };
 
 StreamProfiles::StreamProfiles(QObject* parent)
@@ -37,10 +40,12 @@ QVariantList StreamProfiles::profilesForHost(const QString& hostUuid) const
     return profiles;
 }
 
-void StreamProfiles::setProfilesForHost(const QString& hostUuid, const QVariantList& profiles)
+void StreamProfiles::setProfilesForHost(const QString& hostUuid, const QString& hostName,
+                                        const QVariantList& profiles)
 {
     QSettings settings;
 
+    settings.setValue(QString(SER_HOSTNAMES "/%1").arg(hostUuid), hostName);
     settings.beginGroup(SER_STREAMPROFILES);
     settings.remove(hostUuid);
     settings.beginWriteArray(hostUuid);
@@ -56,6 +61,41 @@ void StreamProfiles::setProfilesForHost(const QString& hostUuid, const QVariantL
     settings.endGroup();
 
     emit profilesChanged(hostUuid);
+}
+
+QVariantList StreamProfiles::allScreensLaunches() const
+{
+    QSet<QString> connected;
+    for (QScreen* screen : QGuiApplication::screens()) {
+        connected.insert(screen->name());
+    }
+
+    QSettings settings;
+    settings.beginGroup(SER_HOSTNAMES);
+    QStringList hostUuids = settings.childKeys();
+    QMap<QString, QString> hostNames;
+    for (const QString& hostUuid : hostUuids) {
+        hostNames[hostUuid] = settings.value(hostUuid).toString();
+    }
+    settings.endGroup();
+
+    QVariantList launches;
+    for (const QString& hostUuid : hostUuids) {
+        for (const QVariant& entry : profilesForHost(hostUuid)) {
+            QVariantMap profile = entry.toMap();
+            QString screen = profile.value("screen").toString();
+            if (profile.value("allScreens").toBool() && !screen.isEmpty() && connected.contains(screen)) {
+                QVariantMap launch;
+                launch["hostUuid"] = hostUuid;
+                launch["hostName"] = hostNames[hostUuid];
+                launch["app"] = profile.value("app").toString();
+                launch["profile"] = profile;
+                launches.append(launch);
+            }
+        }
+    }
+
+    return launches;
 }
 
 QVariantList StreamProfiles::screens() const

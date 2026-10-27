@@ -28,7 +28,7 @@ CenteredGridView {
     // Each stream runs in its own process, so this window stays open while it streams.
     // Without profiles the stream uses the global settings.
     function startStream(appName, profile) {
-        StreamProcessManager.start(appModel.getComputerName(), appName,
+        StreamProcessManager.start(appModel.getComputerUuid(), appModel.getComputerName(), appName,
                                    profile !== undefined ? profile : (hostProfiles.length > 0 ? hostProfiles[0] : {}))
     }
 

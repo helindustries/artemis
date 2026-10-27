@@ -10,6 +10,7 @@ import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
 import StreamProcessManager 1.0
+import StreamProfiles 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -310,6 +311,59 @@ ApplicationWindow {
 
                 // TODO need to make sure browser is brought to foreground.
                 onClicked: Qt.openUrlExternally("https://moonlight-stream.org/discord");
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+
+            NavigableToolButton {
+                id: allScreensButton
+                property var launches: []
+
+                function refresh() {
+                    launches = initialView === "qrc:/gui/PcView.qml" ? StreamProfiles.allScreensLaunches() : []
+                }
+
+                function streamAll() {
+                    refresh()
+                    for (var i = 0; i < launches.length; i++) {
+                        StreamProcessManager.start(launches[i].hostUuid, launches[i].hostName,
+                                                   launches[i].app, launches[i].profile)
+                    }
+                }
+
+                visible: launches.length > 0
+                iconSource: "qrc:/res/desktop_windows-48px.svg"
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Stream on all screens: %1").arg(launches.map(function(launch) {
+                                  return launch.profile.name + " (" + launch.hostName + ")"
+                              }).join(", ")) +
+                              (allScreensShortcut.nativeText ? (" (" + allScreensShortcut.nativeText + ")") : "")
+
+                Shortcut {
+                    id: allScreensShortcut
+                    sequence: "Ctrl+Shift+A"
+                    enabled: initialView === "qrc:/gui/PcView.qml"
+                    onActivated: allScreensButton.streamAll()
+                }
+
+                Connections {
+                    target: StreamProfiles
+                    function onProfilesChanged() { allScreensButton.refresh() }
+                }
+
+                // Screens come and go; the list depends on which are connected
+                Connections {
+                    target: Qt.application
+                    function onScreensChanged() { allScreensButton.refresh() }
+                }
+
+                Component.onCompleted: refresh()
+                onClicked: streamAll()
 
                 Keys.onDownPressed: {
                     stackView.currentItem.forceActiveFocus(Qt.TabFocus)

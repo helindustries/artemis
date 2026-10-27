@@ -53,6 +53,9 @@
 #include "backend/streamprocessmanager.h"
 #include "settings/streamprofiles.h"
 #include "streaming/streamcontrolclient.h"
+#ifdef Q_OS_DARWIN
+#include "streaming/macprocess.h"
+#endif
 
 #include <QQuickWindow>
 #include <QScreen>
@@ -359,7 +362,9 @@ int main(int argc, char *argv[])
     if (IS_UNSPECIFIED_HANDLE(oldConErr))
 #endif
     {
-        s_LoggerFile = new QFile(tempDir.filePath(QString("Artemis-%1.log").arg(QDateTime::currentSecsSinceEpoch())));
+        // The process id keeps apart the logs of stream processes started in the same second
+        s_LoggerFile = new QFile(tempDir.filePath(QString("Artemis-%1-%2.log").arg(QDateTime::currentSecsSinceEpoch())
+                                                                             .arg(QCoreApplication::applicationPid())));
         if (s_LoggerFile->open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream(stderr) << "Redirecting log output to " << s_LoggerFile->fileName() << Qt::endl;
             s_LoggerStream.setDevice(s_LoggerFile);
@@ -799,6 +804,9 @@ int main(int argc, char *argv[])
             streamScreenName = streamParser.getScreen();
 
             if (!streamParser.getControlSocket().isEmpty()) {
+#ifdef Q_OS_DARWIN
+                MacProcess::hideFromDock();
+#endif
                 // Lives until the process exits; its thread must outlast the session
                 auto control = new StreamControlClient(streamParser.getControlSocket(),
                                                        streamParser.getStreamId());
