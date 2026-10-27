@@ -5,6 +5,8 @@ import QtQuick.Controls.Material 2.2
 import AppModel 1.0
 import ComputerManager 1.0
 import SdlGamepadKeyNavigation 1.0
+import StreamProcessManager 1.0
+import StreamProfiles 1.0
 
 CenteredGridView {
     property int computerIndex
@@ -12,6 +14,23 @@ CenteredGridView {
     property bool activated
     property bool showHiddenGames
     property bool showGames
+    property var hostProfiles: StreamProfiles.profilesForHost(appModel.getComputerUuid())
+
+    Connections {
+        target: StreamProfiles
+        function onProfilesChanged(hostUuid) {
+            if (hostUuid === appModel.getComputerUuid()) {
+                hostProfiles = StreamProfiles.profilesForHost(hostUuid)
+            }
+        }
+    }
+
+    // Each stream runs in its own process, so this window stays open while it streams.
+    // Without profiles the stream uses the global settings.
+    function startStream(appName, profile) {
+        StreamProcessManager.start(appModel.getComputerName(), appName,
+                                   profile !== undefined ? profile : (hostProfiles.length > 0 ? hostProfiles[0] : {}))
+    }
 
     id: appGrid
     focus: true
@@ -209,26 +228,9 @@ CenteredGridView {
 
         function launchOrResumeSelectedApp(quitExistingApp)
         {
-            var runningId = appModel.getRunningAppId()
-            if (runningId !== 0 && runningId !== model.appid) {
-                if (quitExistingApp) {
-                    quitAppDialog.appName = appModel.getRunningAppName()
-                    quitAppDialog.segueToStream = true
-                    quitAppDialog.nextAppName = model.name
-                    quitAppDialog.nextAppIndex = index
-                    quitAppDialog.open()
-                }
-
-                return
-            }
-
-            var component = Qt.createComponent("StreamSegue.qml")
-            var segue = component.createObject(stackView, {
-                                                   "appName": model.name,
-                                                   "session": appModel.createSessionForApp(index),
-                                                   "isResume": runningId === model.appid
-                                               })
-            stackView.push(segue)
+            // When another app is running on the host, the stream process asks
+            // whether to quit it, so there is nothing to check here
+            startStream(model.name)
         }
 
         onClicked: {
@@ -289,7 +291,6 @@ CenteredGridView {
 
         function doQuitGame() {
             quitAppDialog.appName = appModel.getRunningAppName()
-            quitAppDialog.segueToStream = false
             quitAppDialog.open()
         }
 
@@ -298,10 +299,22 @@ CenteredGridView {
             asynchronous: true
             sourceComponent: NavigableMenu {
                 id: appContextMenu
+                property string appName: model.name
+
                 NavigableMenuItem {
                     parentMenu: appContextMenu
                     text: model.running ? qsTr("Resume Game") : qsTr("Launch Game")
                     onTriggered: launchOrResumeSelectedApp(true)
+                }
+                Instantiator {
+                    model: hostProfiles
+                    delegate: NavigableMenuItem {
+                        parentMenu: appContextMenu
+                        text: qsTr("Stream with %1").arg(modelData.name)
+                        onTriggered: startStream(appContextMenu.appName, modelData)
+                    }
+                    onObjectAdded: function(index, object) { appContextMenu.insertItem(index + 1, object) }
+                    onObjectRemoved: function(index, object) { appContextMenu.removeItem(object) }
                 }
                 NavigableMenuItem {
                     parentMenu: appContextMenu
@@ -355,26 +368,13 @@ CenteredGridView {
     NavigableMessageDialog {
         id: quitAppDialog
         property string appName : ""
-        property bool segueToStream : false
-        property string nextAppName: ""
-        property int nextAppIndex: 0
         text:qsTr("Are you sure you want to quit %1? Any unsaved progress will be lost.").arg(appName)
         standardButtons: Dialog.Yes | Dialog.No
 
         function quitApp() {
             var component = Qt.createComponent("QuitSegue.qml")
-            var params = {"appName": appName, "quitRunningAppFn": function() { appModel.quitRunningApp() }}
-            if (segueToStream) {
-                // Store the session and app name if we're going to stream after
-                // successfully quitting the old app.
-                params.nextAppName = nextAppName
-                params.nextSession = appModel.createSessionForApp(nextAppIndex)
-            }
-            else {
-                params.nextAppName = null
-                params.nextSession = null
-            }
-
+            var params = {"appName": appName, "quitRunningAppFn": function() { appModel.quitRunningApp() },
+                          "nextAppName": null, "nextSession": null}
             stackView.push(component.createObject(stackView, params))
         }
 

@@ -209,6 +209,16 @@ CenteredGridView {
                 }
                 NavigableMenuItem {
                     parentMenu: pcContextMenu
+                    text: qsTr("Stream Profiles")
+                    onTriggered: {
+                        streamProfilesDialog.hostUuid = model.uuid
+                        streamProfilesDialog.hostName = model.name
+                        streamProfilesDialog.open()
+                    }
+                    visible: model.paired
+                }
+                NavigableMenuItem {
+                    parentMenu: pcContextMenu
                     text: qsTr("Wake PC")
                     onTriggered: computerModel.wakeComputer(index)
                     visible: !model.online && model.wakeable
@@ -409,6 +419,10 @@ CenteredGridView {
             // Stop showing the spinner and show the image instead
             showSpinner = false
         }
+    }
+
+    StreamProfilesDialog {
+        id: streamProfilesDialog
     }
 
     NavigableDialog {

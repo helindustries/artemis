@@ -2243,6 +2243,9 @@ void Session::execInternal()
                 m_InputHandler->setAdaptiveTriggers((uint16_t)(uintptr_t)event.user.data1,
                                                     (DualSenseOutputReport *)event.user.data2);
                 break;
+            case SDL_CODE_RAISE_WINDOW:
+                SDL_RaiseWindow(m_Window);
+                break;
             default:
                 SDL_assert(false);
             }

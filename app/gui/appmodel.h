@@ -35,6 +35,10 @@ public:
 
     Q_INVOKABLE QString getRunningAppName();
 
+    Q_INVOKABLE QString getComputerName();
+
+    Q_INVOKABLE QString getComputerUuid();
+
     Q_INVOKABLE void quitRunningApp();
 
     Q_INVOKABLE void setAppHidden(int appIndex, bool hidden);

@@ -50,6 +50,12 @@
 #include "backend/clipboardmanager.h"
 #include "backend/servercommandmanager.h"
 #include "backend/quickmenumanager.h"
+#include "backend/streamprocessmanager.h"
+#include "settings/streamprofiles.h"
+#include "streaming/streamcontrolclient.h"
+
+#include <QQuickWindow>
+#include <QScreen>
 
 #if defined(Q_OS_WIN32)
 #define IS_UNSPECIFIED_HANDLE(x) ((x) == INVALID_HANDLE_VALUE || (x) == NULL)
@@ -743,6 +749,16 @@ int main(int argc, char *argv[])
                                                [](QQmlEngine*, QJSEngine*) -> QObject* {
                                                    return new QuickMenuManager();
                                                });
+    qmlRegisterSingletonType<StreamProcessManager>("StreamProcessManager", 1, 0,
+                                                   "StreamProcessManager",
+                                                   [](QQmlEngine*, QJSEngine*) -> QObject* {
+                                                       return new StreamProcessManager();
+                                                   });
+    qmlRegisterSingletonType<StreamProfiles>("StreamProfiles", 1, 0,
+                                             "StreamProfiles",
+                                             [](QQmlEngine*, QJSEngine*) -> QObject* {
+                                                 return new StreamProfiles();
+                                             });
 
     // Create the identity manager on the main thread
     IdentityManager::get();
@@ -763,6 +779,7 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     QString initialView;
+    QString streamScreenName;
     bool hasGUI = true;
 
     switch (commandLineParserResult) {
@@ -779,6 +796,30 @@ int main(int argc, char *argv[])
             QString appName = streamParser.getAppName();
             auto launcher   = new CliStartStream::Launcher(host, appName, preferences, &app);
             engine.rootContext()->setContextProperty("launcher", launcher);
+            streamScreenName = streamParser.getScreen();
+
+            if (!streamParser.getControlSocket().isEmpty()) {
+                // Lives until the process exits; its thread must outlast the session
+                auto control = new StreamControlClient(streamParser.getControlSocket(),
+                                                       streamParser.getStreamId());
+                QObject::connect(launcher, &CliStartStream::Launcher::searchingComputer, control,
+                                 [control]() { control->reportState("connecting"); });
+                QObject::connect(launcher, &CliStartStream::Launcher::failed, control,
+                                 [control](QString text) { control->reportState("failed", text); });
+                QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, control,
+                                 [control](QString runningApp) { control->reportState("waiting", runningApp); });
+                // Connected on the launcher's thread so the session's signals are hooked up
+                // before QML receives the same signal and starts the session
+                QObject::connect(launcher, &CliStartStream::Launcher::sessionCreated, launcher,
+                                 [control](QString, Session* session) {
+                    QObject::connect(session, &Session::connectionStarted, control,
+                                     [control]() { control->reportState("streaming"); });
+                    QObject::connect(session, &Session::displayLaunchError, control,
+                                     [control](QString text) { control->reportState("failed", text); });
+                    QObject::connect(session, &Session::sessionFinished, control,
+                                     [control](int) { control->reportState("ended"); });
+                });
+            }
             break;
         }
     case GlobalCommandLineParser::QuitRequested:
@@ -817,6 +858,26 @@ int main(int argc, char *argv[])
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));
         if (engine.rootObjects().isEmpty())
             return -1;
+
+        // Session opens its stream window on the screen of the Qt window that started it
+        if (!streamScreenName.isEmpty()) {
+            QScreen* target = nullptr;
+            for (QScreen* screen : QGuiApplication::screens()) {
+                if (screen->name() == streamScreenName) {
+                    target = screen;
+                }
+            }
+
+            auto window = qobject_cast<QQuickWindow*>(engine.rootObjects().first());
+            if (target != nullptr && window != nullptr) {
+                window->setScreen(target);
+                window->setPosition(target->geometry().center() - QPoint(window->width() / 2, window->height() / 2));
+            }
+            else {
+                qWarning() << "Expected screen" << streamScreenName << "to stream on, but it is not connected;"
+                           << "streaming on the current screen instead";
+            }
+        }
     }
 
     int err = app.exec();

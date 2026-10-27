@@ -15,6 +15,10 @@
 #include "backend/servercommandmanager.h"
 #include "backend/clipboardmanager.h"
 
+// SDL_USEREVENT code that brings the stream window to the front. Posted with
+// SDL_PushEvent, which is the only way in while the session holds the main thread.
+#define SDL_CODE_RAISE_WINDOW 106
+
 class QuickMenuManager;
 class ServerCommandManager;
 class ClipboardManager;

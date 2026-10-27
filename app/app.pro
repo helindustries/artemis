@@ -217,6 +217,9 @@ SOURCES += \
     backend/quickmenumanager.cpp \
     backend/otppairingmanager.cpp \
     settings/artemissettings.cpp \
+    settings/streamprofiles.cpp \
+    backend/streamprocessmanager.cpp \
+    streaming/streamcontrolclient.cpp \
     wm.cpp
 
 HEADERS += \
@@ -240,6 +243,9 @@ HEADERS += \
     cli/quitstream.h \
     cli/startstream.h \
     settings/streamingpreferences.h \
+    settings/streamprofiles.h \
+    backend/streamprocessmanager.h \
+    streaming/streamcontrolclient.h \
     streaming/input/input.h \
     streaming/session.h \
     streaming/audio/renderers/renderer.h \
