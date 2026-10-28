@@ -8,6 +8,8 @@
 
 #include "SDL_compat.h"
 
+#include <Limelight.h>
+
 StreamControlClient::StreamControlClient(QString serverName, QString streamId)
     : m_Socket(nullptr),
       m_ServerName(serverName),
@@ -71,12 +73,13 @@ void StreamControlClient::readCommands()
     while ((newline = m_Buffer.indexOf('\n')) >= 0) {
         QJsonObject message = QJsonDocument::fromJson(m_Buffer.left(newline)).object();
         m_Buffer.remove(0, newline + 1);
-        handleCommand(message["command"].toString());
+        handleCommand(message);
     }
 }
 
-void StreamControlClient::handleCommand(const QString& command)
+void StreamControlClient::handleCommand(const QJsonObject& message)
 {
+    const QString command = message["command"].toString();
     if (command == "stop") {
         // SDL_QUIT ends a running session exactly as the disconnect key combo does.
         // Before or after a session there is no SDL loop to see it, so the Qt quit
@@ -93,7 +96,19 @@ void StreamControlClient::handleCommand(const QString& command)
         event.user.code = SDL_CODE_RAISE_WINDOW;
         SDL_PushEvent(&event);
     }
+    else if (command == "server-command") {
+        // The index into the <ServerCommand> list the host sent; the host checks the permission
+        const int index = message["index"].toInt(-1);
+        if (index >= 0 && index <= UINT8_MAX) {
+            // Unlike the other LiSend* calls this returns true on success, not 0
+            const bool sent = LiSendExecServerCmd(static_cast<uint8_t>(index)) != 0;
+            sendState("server-command", (sent ? QString("sent %1") : QString("failed %1")).arg(index));
+        }
+        else {
+            qWarning() << "Stream control server-command needs an index from 0 to 255, got" << message["index"];
+        }
+    }
     else {
-        qWarning() << "Unknown stream control command:" << command << "(expected stop or raise)";
+        qWarning() << "Unknown stream control command:" << command << "(expected stop, raise or server-command)";
     }
 }
