@@ -5,7 +5,8 @@
 #
 """Drives one Artemis stream process over its control socket against a real host, standing in
    for the main window: the states must arrive in order, an unknown command must not end the
-   stream, "raise" must keep it running, and "stop" must end it cleanly. A second run points
+   stream, "raise" must keep it running, "server-command" must be sent to the host, and
+   "stop" must end it cleanly. A second run points
    the process at a socket nobody listens on, which must be reported and not crash it.
 
    test_stream_control.py <Artemis binary> <settings dir with portable.dat> <host> <app>"""
@@ -54,8 +55,8 @@ def _wait_for_state(connection: socket.socket, buffer: bytearray, wanted: str,
             _expect(message["state"] != "failed", f"stream failed: {message['detail']}")
     _expect(wanted in seen, f"expected state {wanted!r} within {timeout_s} s, saw {seen}")
 
-def _send(connection: socket.socket, command: str) -> None:
-    connection.sendall(json.dumps({"command": command}).encode() + b"\n")
+def _send(connection: socket.socket, command: str, **fields: int) -> None:
+    connection.sendall(json.dumps({"command": command, **fields}).encode() + b"\n")
 
 def test_stop_ends_stream(binary: str, settings_dir: str, host: str, app: str) -> None:
     with tempfile.TemporaryDirectory() as directory:
@@ -80,6 +81,10 @@ def test_stop_ends_stream(binary: str, settings_dir: str, host: str, app: str) -
             _send(connection, "raise")
             time.sleep(3)
             _expect(process.poll() is None, "expected the stream to survive an unknown command and raise")
+
+            # Whether the host runs it is the host's business; the stream must send it
+            _send(connection, "server-command", index=0)
+            _wait_for_state(connection, buffer, "server-command", seen, stop_timeout_s)
 
             started = time.monotonic()
             _send(connection, "stop")

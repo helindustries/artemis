@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QThread>
 
+class QJsonObject;
 class QLocalSocket;
 
 // The stream process's end of the control socket to the Artemis window that started it.
@@ -25,7 +26,7 @@ private slots:
     void sendState(QString state, QString detail);
 
 private:
-    void handleCommand(const QString& command);
+    void handleCommand(const QJsonObject& message);
 
     QThread m_Thread;
     QLocalSocket* m_Socket;
