@@ -113,9 +113,21 @@ ApplicationWindow {
         }
 
         onCurrentItemChanged: {
-            // Ensure focus travels to the next view when going back
+            // Ensure focus travels to the next view when going back. A view can also go
+            // away on its own (its host went offline) under an open dialog, which must keep
+            // the focus: every popup lives in the overlay. The new view still becomes the
+            // one the dialog hands focus back to when it closes.
+            let focused = window.activeFocusItem
+            while (focused && focused !== Overlay.overlay) {
+                focused = focused.parent
+            }
             if (currentItem) {
-                currentItem.forceActiveFocus()
+                if (focused) {
+                    currentItem.focus = true
+                }
+                else {
+                    currentItem.forceActiveFocus()
+                }
             }
         }
 
