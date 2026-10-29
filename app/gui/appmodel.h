@@ -9,6 +9,10 @@
 class AppModel : public QAbstractListModel
 {
     Q_OBJECT
+    // Ids of the stream profiles the host has a virtual display for; only those profiles'
+    // rows show the running app as running. Hosts that do not report them leave every row so.
+    Q_PROPERTY(bool reportsVirtualDisplayProfiles MEMBER m_ReportsVirtualDisplayProfiles NOTIFY virtualDisplayProfilesChanged)
+    Q_PROPERTY(QStringList virtualDisplayProfiles MEMBER m_VirtualDisplayProfiles NOTIFY virtualDisplayProfilesChanged)
 
     enum Roles
     {
@@ -59,6 +63,8 @@ private slots:
 signals:
     void computerLost();
 
+    void virtualDisplayProfilesChanged();
+
 private:
     void updateAppList(QVector<NvApp> newList);
 
@@ -72,4 +78,6 @@ private:
     QVector<NvApp> m_VisibleApps, m_AllApps;
     int m_CurrentGameId;
     bool m_ShowHiddenGames;
+    bool m_ReportsVirtualDisplayProfiles = false;
+    QStringList m_VirtualDisplayProfiles;
 };

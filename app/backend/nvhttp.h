@@ -135,6 +135,11 @@ public:
                 QString tagName);
 
     static
+    bool
+    hasXmlElement(QString xml,
+                  QString tagName);
+
+    static
     QByteArray
     getXmlStringFromHex(QString xml,
                         QString tagName);

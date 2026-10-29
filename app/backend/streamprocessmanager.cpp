@@ -1,4 +1,5 @@
 #include "streamprocessmanager.h"
+#include "settings/streamprofiles.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -53,7 +54,8 @@ void StreamProcessManager::start(const QString& hostUuid, const QString& hostNam
 
     QStringList arguments = { "stream", hostUuid.isEmpty() ? hostName : hostUuid, appName,
                               "--control-socket", m_Server.fullServerName(),
-                              "--stream-id", stream.id };
+                              "--stream-id", stream.id,
+                              "--profile-id", StreamProfiles::idOf(profile) };
     if (profile.value("width").toInt() > 0 && profile.value("height").toInt() > 0) {
         arguments << "--resolution" << QString("%1x%2").arg(profile.value("width").toInt())
                                                         .arg(profile.value("height").toInt());

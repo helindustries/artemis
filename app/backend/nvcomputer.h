@@ -100,6 +100,10 @@ public:
     int serverCodecModeSupport;
     QString gpuModel;
     bool isSupportedServerVersion;
+    // Our host lists the stream profiles this client has a virtual display for; others don't,
+    // and then every profile counts as running while an app runs
+    bool reportsVirtualDisplayProfiles;
+    QStringList virtualDisplayProfiles;
 
     // Persisted traits
     NvAddress localAddress;

@@ -233,6 +233,7 @@ NavigableDialog {
 
         onAccepted: {
             var profile = {
+                "id": row >= 0 ? profilesDialog.profiles[row].id : "",
                 "name": nameField.text.trim() !== "" ? nameField.text.trim() :
                                                       qsTr("%1x%2").arg(widthBox.value).arg(heightBox.value),
                 "width": widthBox.value,

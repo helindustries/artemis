@@ -17,6 +17,8 @@ void AppModel::initialize(ComputerManager* computerManager, int computerIndex, b
     m_Computer = m_ComputerManager->getComputers().at(computerIndex);
     m_CurrentGameId = m_Computer->currentGameId;
     m_ShowHiddenGames = showHiddenGames;
+    m_ReportsVirtualDisplayProfiles = m_Computer->reportsVirtualDisplayProfiles;
+    m_VirtualDisplayProfiles = m_Computer->virtualDisplayProfiles;
 
     updateAppList(m_Computer->appList);
 }
@@ -310,6 +312,13 @@ void AppModel::handleComputerStateChanged(NvComputer* computer)
 
         // Now update our internal state
         m_CurrentGameId = m_Computer->currentGameId;
+    }
+
+    if (computer->reportsVirtualDisplayProfiles != m_ReportsVirtualDisplayProfiles ||
+            computer->virtualDisplayProfiles != m_VirtualDisplayProfiles) {
+        m_ReportsVirtualDisplayProfiles = computer->reportsVirtualDisplayProfiles;
+        m_VirtualDisplayProfiles = computer->virtualDisplayProfiles;
+        emit virtualDisplayProfilesChanged();
     }
 }
 

@@ -35,6 +35,13 @@ ListView {
                                    profile ? profile : {})
     }
 
+    // The running app runs for a row only if the host has a virtual display for its profile:
+    // the other rows launch a stream on a screen of their own instead of resuming
+    function hasVirtualDisplay(profile) {
+        return !appModel.reportsVirtualDisplayProfiles ||
+                appModel.virtualDisplayProfiles.indexOf(StreamProfiles.idOf(profile ? profile : {})) >= 0
+    }
+
     function describeProfile(profile) {
         return qsTr("%1  %2x%3 at %4 FPS").arg(profile.name).arg(profile.width).arg(profile.height).arg(profile.fps)
     }
@@ -145,8 +152,11 @@ ListView {
             }
 
             delegate: NavigableItemDelegate {
+                id: appTile
                 width: 220; height: 287;
                 grid: appGrid
+
+                property bool running: model.running && profileRows.hasVirtualDisplay(profileRow.profile)
 
                 property alias appContextMenu: appContextMenuLoader.item
                 property alias appNameText: appNameTextLoader.item
@@ -198,7 +208,7 @@ ListView {
                 }
 
                 Loader {
-                    active: model.running
+                    active: appTile.running
                     asynchronous: true
                     anchors.fill: appIcon
 
@@ -269,7 +279,7 @@ ListView {
                     // in the time in which the text loads for each game.
 
                     width: appIcon.width
-                    height: model.running ? 175 : appIcon.height
+                    height: appTile.running ? 175 : appIcon.height
 
                     anchors.left: appIcon.left
                     anchors.right: appIcon.right
@@ -300,7 +310,7 @@ ListView {
                     // For running games, buttons will appear to resume or quit which
                     // will handle starting the game and clicks on the box art will
                     // be ignored.
-                    if (!model.running) {
+                    if (!appTile.running) {
                         launchOrResumeSelectedApp(true)
                     }
                 }
@@ -328,7 +338,7 @@ ListView {
                     // Open the app context menu if activated via the gamepad or keyboard
                     // for running games. If the game isn't running, the above onClicked
                     // method will handle the launch.
-                    if (model.running) {
+                    if (appTile.running) {
                         // This will be keyboard/gamepad driven so use
                         // open() instead of popup()
                         appContextMenu.open()
@@ -339,7 +349,7 @@ ListView {
                     // Open the app context menu if activated via the gamepad or keyboard
                     // for running games. If the game isn't running, the above onClicked
                     // method will handle the launch.
-                    if (model.running) {
+                    if (appTile.running) {
                         // This will be keyboard/gamepad driven so use
                         // open() instead of popup()
                         appContextMenu.open()
@@ -364,14 +374,14 @@ ListView {
 
                         NavigableMenuItem {
                             parentMenu: appContextMenu
-                            text: model.running ? qsTr("Resume Game") : qsTr("Launch Game")
+                            text: appTile.running ? qsTr("Resume Game") : qsTr("Launch Game")
                             onTriggered: launchOrResumeSelectedApp(true)
                         }
                         NavigableMenuItem {
                             parentMenu: appContextMenu
                             text: qsTr("Quit Game")
                             onTriggered: doQuitGame()
-                            visible: model.running
+                            visible: appTile.running
                         }
                         NavigableMenuItem {
                             parentMenu: appContextMenu
@@ -392,7 +402,7 @@ ListView {
                             checked: model.hidden
                             text: qsTr("Hide Game")
                             onTriggered: appModel.setAppHidden(model.index, !model.hidden)
-                            enabled: model.hidden || (!model.running && !model.directLaunch)
+                            enabled: model.hidden || (!appTile.running && !model.directLaunch)
 
                             ToolTip.text: qsTr("Hide this game from the app grid. To access hidden games, right-click on the host and choose %1.").arg(qsTr("View All Apps"))
                             ToolTip.delay: 1000

@@ -213,6 +213,9 @@ public:
     bool enableResolutionScaling;
     int resolutionScaleFactor;
 
+    // Not stored: the stream profile a stream process was started with, sent to the host
+    QString profileId;
+
 signals:
     void displayModeChanged();
     void bitrateChanged();

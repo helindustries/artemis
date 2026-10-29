@@ -374,6 +374,7 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addValueOption("control-socket", "local socket of the Artemis window controlling this stream");
     parser.addValueOption("stream-id", "identifier this stream reports on the control socket");
     parser.addValueOption("screen", "name of the screen to stream on");
+    parser.addValueOption("profile-id", "stream profile the host ties this stream's virtual display to");
 
     if (!parser.parse(args)) {
         parser.showError(parser.errorText());
@@ -512,6 +513,7 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     m_ControlSocket = parser.value("control-socket");
     m_StreamId = parser.value("stream-id");
     m_Screen = parser.value("screen");
+    preferences->profileId = parser.value("profile-id");
 
     // This method will not return and terminates the process if --version or
     // --help is specified

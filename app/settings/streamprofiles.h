@@ -13,13 +13,22 @@ class StreamProfiles : public QObject
 public:
     explicit StreamProfiles(QObject* parent = nullptr);
 
-    // Each profile is a map with name, width, height, fps, bitrateKbps,
+    // Each profile is a map with id (assigned on first save, kept across edits), name, width,
+    // height, fps, bitrateKbps,
     // displayMode (fullscreen, borderless or windowed), screen (a QScreen name,
     // empty for the screen the Artemis window is on), app (what "all screens"
     // starts) and allScreens (whether "all screens" starts it).
     Q_INVOKABLE QVariantList profilesForHost(const QString& hostUuid) const;
     Q_INVOKABLE void setProfilesForHost(const QString& hostUuid, const QString& hostName,
                                         const QVariantList& profiles);
+
+    // The id the host ties a stream's virtual display to: the profile's own, or one shared
+    // id for streams with the global settings (an empty map)
+    Q_INVOKABLE static QString idOf(const QVariantMap& profile)
+    {
+        QString id = profile.value("id").toString();
+        return id.isEmpty() ? QStringLiteral("default") : id;
+    }
 
     // Every allScreens profile of every host whose screen is connected, as maps with
     // hostUuid, hostName, app and profile. A profile without a pinned screen is left

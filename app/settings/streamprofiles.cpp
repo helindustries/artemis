@@ -5,13 +5,37 @@
 #include <QScreen>
 #include <QSet>
 #include <QSettings>
+#include <QUuid>
 
 #define SER_STREAMPROFILES "streamprofiles"
 #define SER_HOSTNAMES "hostnames"
 
 static const QStringList k_ProfileKeys = {
-    "name", "width", "height", "fps", "bitrateKbps", "displayMode", "screen", "app", "allScreens"
+    "id", "name", "width", "height", "fps", "bitrateKbps", "displayMode", "screen", "app", "allScreens"
 };
+
+// Gives every profile without one an id, which it keeps across edits: the host ties the
+// profile's virtual display to it
+static void writeProfiles(QSettings& settings, const QString& hostUuid, QVariantList& profiles)
+{
+    settings.beginGroup(SER_STREAMPROFILES);
+    settings.remove(hostUuid);
+    settings.beginWriteArray(hostUuid);
+    for (int i = 0; i < profiles.size(); i++) {
+        settings.setArrayIndex(i);
+
+        QVariantMap profile = profiles[i].toMap();
+        if (profile.value("id").toString().isEmpty()) {
+            profile["id"] = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            profiles[i] = profile;
+        }
+        for (const QString& key : k_ProfileKeys) {
+            settings.setValue(key, profile.value(key));
+        }
+    }
+    settings.endArray();
+    settings.endGroup();
+}
 
 StreamProfiles::StreamProfiles(QObject* parent)
     : QObject(parent)
@@ -23,6 +47,7 @@ QVariantList StreamProfiles::profilesForHost(const QString& hostUuid) const
     QSettings settings;
     QVariantList profiles;
 
+    bool missingId = false;
     settings.beginGroup(SER_STREAMPROFILES);
     int count = settings.beginReadArray(hostUuid);
     for (int i = 0; i < count; i++) {
@@ -32,10 +57,16 @@ QVariantList StreamProfiles::profilesForHost(const QString& hostUuid) const
         for (const QString& key : k_ProfileKeys) {
             profile[key] = settings.value(key);
         }
+        missingId = missingId || profile.value("id").toString().isEmpty();
         profiles.append(profile);
     }
     settings.endArray();
     settings.endGroup();
+
+    // Profiles stored before they had ids get theirs once, so they stay the same from now on
+    if (missingId) {
+        writeProfiles(settings, hostUuid, profiles);
+    }
 
     return profiles;
 }
@@ -44,21 +75,10 @@ void StreamProfiles::setProfilesForHost(const QString& hostUuid, const QString& 
                                         const QVariantList& profiles)
 {
     QSettings settings;
+    QVariantList stored = profiles;
 
     settings.setValue(QString(SER_HOSTNAMES "/%1").arg(hostUuid), hostName);
-    settings.beginGroup(SER_STREAMPROFILES);
-    settings.remove(hostUuid);
-    settings.beginWriteArray(hostUuid);
-    for (int i = 0; i < profiles.size(); i++) {
-        settings.setArrayIndex(i);
-
-        QVariantMap profile = profiles[i].toMap();
-        for (const QString& key : k_ProfileKeys) {
-            settings.setValue(key, profile.value(key));
-        }
-    }
-    settings.endArray();
-    settings.endGroup();
+    writeProfiles(settings, hostUuid, stored);
 
     emit profilesChanged(hostUuid);
 }

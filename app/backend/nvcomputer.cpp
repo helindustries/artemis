@@ -61,6 +61,7 @@ NvComputer::NvComputer(QSettings& settings)
     this->pendingQuit = false;
     this->gpuModel = nullptr;
     this->isSupportedServerVersion = true;
+    this->reportsVirtualDisplayProfiles = false;
     this->externalPort = this->remoteAddress.port();
     this->activeHttpsPort = 0;
 }
@@ -223,6 +224,9 @@ NvComputer::NvComputer(NvHTTP& http, QString serverInfo)
     
     // Parse server commands (Apollo/Sunshine servers only)
     this->serverCommands = NvHTTP::getXmlArray(serverInfo, "ServerCommand");
+
+    this->reportsVirtualDisplayProfiles = NvHTTP::hasXmlElement(serverInfo, "VirtualDisplayProfiles");
+    this->virtualDisplayProfiles = NvHTTP::getXmlArray(serverInfo, "VirtualDisplayProfile");
     
     // Parse server permissions (Apollo servers only)
     QString permissionStr = NvHTTP::getXmlString(serverInfo, "Permission");
@@ -596,6 +600,8 @@ bool NvComputer::update(const NvComputer& that)
     ASSIGN_IF_CHANGED_AND_NONEMPTY(displayModes);
     ASSIGN_IF_CHANGED(serverCommands);
     ASSIGN_IF_CHANGED(serverPermissions);
+    ASSIGN_IF_CHANGED(reportsVirtualDisplayProfiles);
+    ASSIGN_IF_CHANGED(virtualDisplayProfiles);
 
     if (!that.appList.isEmpty()) {
         // updateAppList() handles merging client-side attributes

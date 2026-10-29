@@ -270,7 +270,12 @@ NvHTTP::startApp(QString verb,
         allParams += "&scaleFactor=" + QString::number(prefs->resolutionScaleFactor);
         qInfo() << "Requesting resolution scaling:" << prefs->resolutionScaleFactor << "%";
     }
-    
+
+    // Our host reuses a virtual display only for the profile it was made for
+    if (!prefs->profileId.isEmpty()) {
+        allParams += "&profileId=" + QUrl::toPercentEncoding(prefs->profileId);
+    }
+
     // Add Limelight parameters
     allParams += LiGetLaunchUrlQueryParameters();
 
@@ -468,6 +473,21 @@ NvHTTP::getXmlString(QString xml,
     }
 
     return nullptr;
+}
+
+bool
+NvHTTP::hasXmlElement(QString xml, QString tagName)
+{
+    // getXmlString() cannot tell an empty element from a missing one
+    QXmlStreamReader xmlReader(xml);
+    bool found = false;
+
+    while (!xmlReader.atEnd() && !found)
+    {
+        found = xmlReader.readNext() == QXmlStreamReader::StartElement && xmlReader.name() == tagName;
+    }
+
+    return found;
 }
 
 QStringList

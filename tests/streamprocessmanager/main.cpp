@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
     StreamProcessManager manager;
 
     // A profile becomes the stream's options, and its state reaches the model
-    QVariantMap profile { { "name", "MacBook" }, { "width", 1728 }, { "height", 1116 }, { "fps", 120 },
+    QVariantMap profile { { "id", "5f0c-macbook" }, { "name", "MacBook" }, { "width", 1728 }, { "height", 1116 }, { "fps", 120 },
                           { "bitrateKbps", 40000 }, { "displayMode", "borderless" }, { "screen", "Built-in" } };
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
     expect(manager.count() == 1, "expected one stream after start");
@@ -123,7 +123,8 @@ int main(int argc, char* argv[])
     // The host is found by its id, so renaming it cannot break a stored launch
     QStringList passed = readArguments(record);
     QStringList wanted { "stream", "EB8319F3-HOST", "Desktop", "--resolution", "1728x1116", "--fps", "120",
-                         "--bitrate", "40000", "--display-mode", "borderless", "--screen", "Built-in" };
+                         "--bitrate", "40000", "--display-mode", "borderless", "--screen", "Built-in",
+                         "--profile-id", "5f0c-macbook" };
     for (const QString& argument : wanted) {
         expect(passed.contains(argument), QString("expected stream argument %1, got %2").arg(argument, passed.join(' ')));
     }
@@ -144,6 +145,8 @@ int main(int argc, char* argv[])
     expect(!passed.contains("--resolution") && !passed.contains("--bitrate"),
            QString("expected no settings for an empty profile, got %1").arg(passed.join(' ')));
     expect(passed.value(1) == "Heimdall", QString("expected the host name without an id, got %1").arg(passed.join(' ')));
+    expect(passed.value(passed.indexOf("--profile-id") + 1) == "default",
+           QString("expected the shared profile id for an empty profile, got %1").arg(passed.join(' ')));
     manager.stop(0);
     waitFor([&]() { return manager.count() == 0; }, 5000);
 
