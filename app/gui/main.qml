@@ -595,6 +595,20 @@ ApplicationWindow {
         }
     }
 
+    // A stream process reports its error here and ends: it has no Dock icon and no window
+    // of its own to show a dialog in
+    ErrorMessageDialog {
+        id: streamFailedDialog
+    }
+
+    Connections {
+        target: StreamProcessManager
+        function onStreamFailed(hostName, appName, detail) {
+            streamFailedDialog.text = qsTr("%1 on %2 ended:").arg(appName).arg(hostName) + "\n\n" + detail
+            streamFailedDialog.open()
+        }
+    }
+
     StreamsDialog {
         id: streamsDialog
     }

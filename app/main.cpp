@@ -813,19 +813,32 @@ int main(int argc, char *argv[])
                 QObject::connect(launcher, &CliStartStream::Launcher::searchingComputer, control,
                                  [control]() { control->reportState("connecting"); });
                 QObject::connect(launcher, &CliStartStream::Launcher::failed, control,
-                                 [control](QString text) { control->reportState("failed", text); });
+                                 [control](QString text) { control->reportFinalState("failed", text); });
                 QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, control,
                                  [control](QString runningApp) { control->reportState("waiting", runningApp); });
                 // Connected on the launcher's thread so the session's signals are hooked up
                 // before QML receives the same signal and starts the session
                 QObject::connect(launcher, &CliStartStream::Launcher::sessionCreated, launcher,
                                  [control](QString, Session* session) {
+                    // A launch error comes before sessionFinished: the stream then ends as
+                    // failed, with the error, instead of showing it in a dialog of its own
+                    auto error = std::make_shared<QString>();
                     QObject::connect(session, &Session::connectionStarted, control,
                                      [control]() { control->reportState("streaming"); });
                     QObject::connect(session, &Session::displayLaunchError, control,
-                                     [control](QString text) { control->reportState("failed", text); });
+                                     [control, error](QString text) {
+                        *error = text;
+                        control->reportState("failed", text);
+                    });
                     QObject::connect(session, &Session::sessionFinished, control,
-                                     [control](int) { control->reportState("ended"); });
+                                     [control, error](int) {
+                        if (error->isEmpty()) {
+                            control->reportState("ended");
+                        }
+                        else {
+                            control->reportFinalState("failed", *error);
+                        }
+                    });
                 });
             }
             break;

@@ -20,6 +20,11 @@ public:
     // Safe to call from any thread
     void reportState(QString state, QString detail = QString());
 
+    // Reports the last state, then quits the process once it is written. The window that
+    // started this process shows it, so a stream that failed does not wait on a dialog of
+    // its own that nobody sees (the process has no Dock icon and no window to the front).
+    void reportFinalState(QString state, QString detail = QString());
+
 private slots:
     void connectToServer();
     void readCommands();

@@ -173,6 +173,9 @@ void StreamProcessManager::handleProcessFinished(QProcess* process)
 {
     int row = rowForProcess(process);
     if (row >= 0) {
+        if (const Stream& stream = m_Streams[row]; stream.state == "failed") {
+            emit streamFailed(stream.hostName, stream.appName, stream.detail);
+        }
         beginRemoveRows(QModelIndex(), row, row);
         m_Streams.removeAt(row);
         endRemoveRows();

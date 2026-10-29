@@ -33,6 +33,16 @@ void StreamControlClient::reportState(QString state, QString detail)
                               Q_ARG(QString, state), Q_ARG(QString, detail));
 }
 
+void StreamControlClient::reportFinalState(QString state, QString detail)
+{
+    // Queued behind any earlier report on the control thread, and sendState() flushes,
+    // so the window has every message before the process goes
+    QMetaObject::invokeMethod(this, [this, state, detail]() {
+        sendState(state, detail);
+        QMetaObject::invokeMethod(QCoreApplication::instance(), "quit", Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
+
 void StreamControlClient::connectToServer()
 {
     m_Socket = new QLocalSocket(this);

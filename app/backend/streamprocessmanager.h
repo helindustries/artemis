@@ -46,6 +46,8 @@ public:
 
 signals:
     void countChanged();
+    // A stream process ended after reporting an error, which only this window can show
+    void streamFailed(QString hostName, QString appName, QString detail);
 
 private:
     struct Stream

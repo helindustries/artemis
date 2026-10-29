@@ -8,10 +8,13 @@
    stream, "raise" must keep it running, "server-command" must be sent to the host, and
    "stop" must end it cleanly. A second run points
    the process at a socket nobody listens on, which must be reported and not crash it.
+   Given the host's process id, a last run kills the host mid-stream: the stream must report
+   failed with the error and exit, since nobody would see a dialog it left open.
 
-   test_stream_control.py <Artemis binary> <settings dir with portable.dat> <host> <app>"""
+   test_stream_control.py <Artemis binary> <settings dir with portable.dat> <host> <app> [host pid]"""
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -117,13 +120,51 @@ def test_missing_controller_is_reported(binary: str, settings_dir: str, host: st
         _expect("could not connect" in text,
                 f"expected the missing controller to be logged in {logs[0]}")
 
+def test_host_loss_ends_stream(binary: str, settings_dir: str, host: str, app: str,
+                               host_pid: int) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        socket_path = os.path.join(directory, "control")
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(socket_path)
+        server.listen(1)
+        server.settimeout(30)
+
+        process = _start_stream(binary, settings_dir, host, app, socket_path)
+        try:
+            connection, _ = server.accept()
+            connection.settimeout(0.5)
+            buffer = bytearray()
+            seen: list[str] = []
+            _wait_for_state(connection, buffer, "streaming", seen, state_timeout_s)
+
+            os.kill(host_pid, signal.SIGKILL)
+            details: list[str] = []
+            deadline = time.monotonic() + state_timeout_s
+            while process.poll() is None and time.monotonic() < deadline:
+                for message in _read_messages(connection, buffer):
+                    print(f"  state {message['state']} {message['detail']}".rstrip())
+                    if message["state"] == "failed":
+                        details.append(message["detail"])
+            _expect(process.poll() is not None,
+                    f"expected the stream process to exit after losing the host within {state_timeout_s} s")
+            _expect(len(details) > 0 and details[-1] != "",
+                    f"expected a failed state with the error before the process exited, got {details}")
+        finally:
+            if process.poll() is None:
+                process.kill()
+            server.close()
+
 def main(arguments: list[str]) -> int:
-    if len(arguments) != 4:
+    if len(arguments) not in (4, 5):
         raise SystemExit(__doc__)
-    binary, settings_dir, host, app = arguments
+    binary, settings_dir, host, app = arguments[:4]
     for test in (test_stop_ends_stream, test_missing_controller_is_reported):
         print(test.__name__)
         test(binary, settings_dir, host, app)
+        print("  passed")
+    if len(arguments) == 5:
+        print(test_host_loss_ends_stream.__name__)
+        test_host_loss_ends_stream(binary, settings_dir, host, app, int(arguments[4]))
         print("  passed")
     return 0
 
