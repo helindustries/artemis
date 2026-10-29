@@ -75,8 +75,8 @@ ListView {
         // Attached handlers do not see the list's members unqualified
         var firstRow = profileRows.itemAtIndex(0)
 
-        // Highlight the first item if a gamepad is connected
-        if (firstRow && firstRow.grid.currentIndex == -1 && SdlGamepadKeyNavigation.getConnectedGamepads() > 0) {
+        // Highlight the first item, so Enter launches it without an arrow key first
+        if (firstRow && firstRow.grid.currentIndex == -1) {
             firstRow.grid.currentIndex = 0
         }
 

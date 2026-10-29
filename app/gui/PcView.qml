@@ -21,9 +21,9 @@ CenteredGridView {
     objectName: qsTr("Computers")
 
     Component.onCompleted: {
-        // Don't show any highlighted item until interacting with them.
-        // We do this here instead of onActivated to avoid losing the user's
-        // selection when backing out of a different page of the app.
+        // Start without a selection, so onActivated selects the first item
+        // only once and keeps the user's selection when backing out of a
+        // different page of the app.
         currentIndex = -1
     }
 
@@ -34,8 +34,8 @@ CenteredGridView {
         // Setup signals on CM
         ComputerManager.computerAddCompleted.connect(addComplete)
 
-        // Highlight the first item if a gamepad is connected
-        if (currentIndex == -1 && SdlGamepadKeyNavigation.getConnectedGamepads() > 0) {
+        // Highlight the first item, so Enter acts on it without an arrow key first
+        if (currentIndex == -1) {
             currentIndex = 0
         }
     }
