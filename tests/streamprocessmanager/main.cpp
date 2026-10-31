@@ -150,6 +150,21 @@ int main(int argc, char* argv[])
     manager.stop(0);
     waitFor([&]() { return manager.count() == 0; }, 5000);
 
+    // A profile row's stop ends that profile's stream on that host only
+    QVariantMap otherProfile = profile;
+    otherProfile["id"] = "9a1e-other";
+    manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
+    manager.start("EB8319F3-HOST", "Heimdall", "Desktop", otherProfile);
+    waitFor([&]() { return manager.count() == 2 &&
+                           manager.data(manager.index(1), StreamProcessManager::StateRole) == "streaming"; }, 10000);
+    expect(manager.stopProfile("OTHER-HOST", "5f0c-macbook") == 0, "expected no stream stopped for another host");
+    expect(manager.stopProfile("EB8319F3-HOST", "5f0c-macbook") == 1, "expected the profile's one stream stopped");
+    expect(waitFor([&]() { return manager.count() == 1; }, 5000), "expected the other profile's stream to keep streaming");
+    expect(manager.data(manager.index(0), StreamProcessManager::ProfileNameRole) == "MacBook" &&
+           manager.stopProfile("EB8319F3-HOST", "9a1e-other") == 1,
+           "expected the remaining stream to be the other profile's");
+    waitFor([&]() { return manager.count() == 0; }, 5000);
+
     // A stream that ignores stop is killed after the grace period and still leaves
     qputenv("FAKE_STREAM_DEAF", "1");
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);

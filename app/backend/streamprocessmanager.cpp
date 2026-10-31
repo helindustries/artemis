@@ -45,6 +45,8 @@ void StreamProcessManager::start(const QString& hostUuid, const QString& hostNam
 {
     Stream stream;
     stream.id = QString::number(m_NextId++);
+    stream.hostUuid = hostUuid;
+    stream.profileId = StreamProfiles::idOf(profile);
     stream.hostName = hostName;
     stream.appName = appName;
     stream.profileName = profile.value("name").toString();
@@ -93,6 +95,18 @@ void StreamProcessManager::start(const QString& hostUuid, const QString& hostNam
     emit countChanged();
 
     stream.process->start(QCoreApplication::applicationFilePath(), arguments);
+}
+
+int StreamProcessManager::stopProfile(const QString& hostUuid, const QString& profileId)
+{
+    int stopped = 0;
+    for (int row = 0; row < m_Streams.size(); row++) {
+        if (m_Streams[row].hostUuid == hostUuid && m_Streams[row].profileId == profileId) {
+            stop(row);
+            stopped++;
+        }
+    }
+    return stopped;
 }
 
 void StreamProcessManager::stop(int row)

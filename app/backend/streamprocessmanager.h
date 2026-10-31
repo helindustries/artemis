@@ -37,6 +37,9 @@ public:
     Q_INVOKABLE void start(const QString& hostUuid, const QString& hostName, const QString& appName,
                            const QVariantMap& profile);
     Q_INVOKABLE void stop(int row);
+    // Stops the streams of one host started with this profile (StreamProfiles::idOf); returns
+    // how many it stopped, so a caller can fall back to quitting the host's app
+    Q_INVOKABLE int stopProfile(const QString& hostUuid, const QString& profileId);
     Q_INVOKABLE void raise(int row);
 
     int count() const;
@@ -53,6 +56,8 @@ private:
     struct Stream
     {
         QString id;
+        QString hostUuid;
+        QString profileId;
         QString hostName;
         QString appName;
         QString profileName;

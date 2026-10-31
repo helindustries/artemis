@@ -258,10 +258,10 @@ ListView {
                             }
 
                             onClicked: {
-                                doQuitGame()
+                                stopRowStreams()
                             }
 
-                            ToolTip.text: qsTr("Quit Game")
+                            ToolTip.text: qsTr("Stop Stream")
                             ToolTip.delay: 1000
                             ToolTip.timeout: 3000
                             ToolTip.visible: hovered
@@ -364,6 +364,15 @@ ListView {
                 function doQuitGame() {
                     quitAppDialog.appName = appModel.getRunningAppName()
                     quitAppDialog.open()
+                }
+
+                // A row stops its own streams, leaving the other rows' screens streaming; only
+                // a stream this window did not start (another device's) needs the app quit
+                function stopRowStreams() {
+                    if (StreamProcessManager.stopProfile(appModel.getComputerUuid(),
+                                                         StreamProfiles.idOf(profileRow.profile ? profileRow.profile : {})) === 0) {
+                        doQuitGame()
+                    }
                 }
 
                 Loader {
