@@ -23,6 +23,8 @@
 #define LAUNCH_TIMEOUT_MS 120000
 #define RESUME_TIMEOUT_MS 30000
 #define QUIT_TIMEOUT_MS 30000
+// A host renders a pinned app's icon the first time it is asked, which takes seconds
+#define ICON_TIMEOUT_MS 30000
 
 NvHTTP::NvHTTP(NvAddress address, uint16_t httpsPort, QSslCertificate serverCert) :
     m_ServerCert(serverCert)
@@ -276,6 +278,11 @@ NvHTTP::startApp(QString verb,
         allParams += "&profileId=" + QUrl::toPercentEncoding(prefs->profileId);
     }
 
+    // Coherence mode: the host captures this one window instead of a display
+    if (prefs->windowId != 0) {
+        allParams += "&windowId=" + QString::number(prefs->windowId);
+    }
+
     // Add Limelight parameters
     allParams += LiGetLaunchUrlQueryParameters();
 
@@ -385,6 +392,135 @@ NvHTTP::getAppList()
 
     return apps;
 }
+
+QVector<NvHostWindow>
+NvHTTP::getWindows()
+{
+    QString windowsXml = openConnectionToString(m_BaseUrlHttps,
+                                                "windows",
+                                                nullptr,
+                                                REQUEST_TIMEOUT_MS,
+                                                NvLogLevel::NVLL_ERROR);
+    verifyResponseStatus(windowsXml);
+
+    QXmlStreamReader xmlReader(windowsXml);
+    QVector<NvHostWindow> windows;
+    while (!xmlReader.atEnd()) {
+        while (xmlReader.readNextStartElement()) {
+            auto name = xmlReader.name();
+            if (name == QString("Window")) {
+                windows.append(NvHostWindow());
+            }
+            else if (windows.isEmpty()) {
+                continue;
+            }
+            else if (name == QString("ID")) {
+                windows.last().id = xmlReader.readElementText().toULongLong();
+            }
+            else if (name == QString("Title")) {
+                windows.last().title = xmlReader.readElementText();
+            }
+            else if (name == QString("Process")) {
+                windows.last().process = xmlReader.readElementText();
+            }
+            else if (name == QString("X")) {
+                windows.last().x = xmlReader.readElementText().toInt();
+            }
+            else if (name == QString("Y")) {
+                windows.last().y = xmlReader.readElementText().toInt();
+            }
+            else if (name == QString("Width")) {
+                windows.last().width = xmlReader.readElementText().toInt();
+            }
+            else if (name == QString("Height")) {
+                windows.last().height = xmlReader.readElementText().toInt();
+            }
+            else if (name == QString("Minimized")) {
+                windows.last().minimized = xmlReader.readElementText() == "1";
+            }
+        }
+    }
+
+    return windows;
+}
+
+QVector<NvPinnedApp>
+NvHTTP::getPinnedApps()
+{
+    QString appsXml = openConnectionToString(m_BaseUrlHttps,
+                                             "pinnedapps",
+                                             nullptr,
+                                             REQUEST_TIMEOUT_MS,
+                                             NvLogLevel::NVLL_ERROR);
+    verifyResponseStatus(appsXml);
+
+    QXmlStreamReader xmlReader(appsXml);
+    QVector<NvPinnedApp> apps;
+    while (!xmlReader.atEnd()) {
+        while (xmlReader.readNextStartElement()) {
+            auto name = xmlReader.name();
+            if (name == QString("App")) {
+                apps.append(NvPinnedApp());
+            }
+            else if (apps.isEmpty()) {
+                continue;
+            }
+            else if (name == QString("ID")) {
+                apps.last().id = xmlReader.readElementText();
+            }
+            else if (name == QString("Name")) {
+                apps.last().name = xmlReader.readElementText();
+            }
+        }
+    }
+
+    return apps;
+}
+
+QImage
+NvHTTP::getPinnedAppIcon(const QString& id)
+{
+    QNetworkReply* reply = openConnection(m_BaseUrlHttps,
+                                          "pinnedapps/icon",
+                                          "id=" + QUrl::toPercentEncoding(id),
+                                          ICON_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR);
+    QImage image = QImageReader(reply).read();
+    delete reply;
+
+    return image;
+}
+
+void
+NvHTTP::launchPinnedApp(const QString& id)
+{
+    openConnectionToString(m_BaseUrlHttps,
+                           "actions/launch",
+                           "id=" + QUrl::toPercentEncoding(id),
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
+void
+NvHTTP::raiseWindow(quint64 id)
+{
+    openConnectionToString(m_BaseUrlHttps,
+                           "actions/window",
+                           "op=raise&id=" + QString::number(id),
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
+void
+NvHTTP::resizeWindow(quint64 id, int width, int height)
+{
+    openConnectionToString(m_BaseUrlHttps,
+                           "actions/window",
+                           QString("op=resize&id=%1&width=%2&height=%3").arg(id).arg(width).arg(height),
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
 
 void
 NvHTTP::verifyResponseStatus(QString xml)

@@ -51,6 +51,7 @@
 #include "backend/servercommandmanager.h"
 #include "backend/quickmenumanager.h"
 #include "backend/streamprocessmanager.h"
+#include "backend/coherencemanager.h"
 #include "settings/streamprofiles.h"
 #include "streaming/streamcontrolclient.h"
 #ifdef Q_OS_DARWIN
@@ -759,6 +760,13 @@ int main(int argc, char *argv[])
                                                    [](QQmlEngine*, QJSEngine*) -> QObject* {
                                                        return new StreamProcessManager();
                                                    });
+    qmlRegisterSingletonType<CoherenceManager>("CoherenceManager", 1, 0,
+                                               "CoherenceManager",
+                                               [](QQmlEngine* qmlEngine, QJSEngine*) -> QObject* {
+                                                   return new CoherenceManager(
+                                                       qmlEngine->singletonInstance<ComputerManager*>("ComputerManager", "ComputerManager"),
+                                                       qmlEngine->singletonInstance<StreamProcessManager*>("StreamProcessManager", "StreamProcessManager"));
+                                               });
     qmlRegisterSingletonType<StreamProfiles>("StreamProfiles", 1, 0,
                                              "StreamProfiles",
                                              [](QQmlEngine*, QJSEngine*) -> QObject* {
@@ -785,6 +793,8 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     QString initialView;
     QString streamScreenName;
+    QString coherenceHost;
+    QString coherenceApp;
     bool hasGUI = true;
 
     switch (commandLineParserResult) {
@@ -825,6 +835,11 @@ int main(int argc, char *argv[])
                     auto error = std::make_shared<QString>();
                     QObject::connect(session, &Session::connectionStarted, control,
                                      [control]() { control->reportState("streaming"); });
+                    QObject::connect(session, &Session::windowResized, control, [control](int width, int height) {
+                        control->reportEvent("resized", QString("%1x%2").arg(width).arg(height));
+                    });
+                    QObject::connect(session, &Session::windowRestored, control,
+                                     [control]() { control->reportEvent("restored"); });
                     QObject::connect(session, &Session::displayLaunchError, control,
                                      [control, error](QString text) {
                         *error = text;
@@ -861,6 +876,24 @@ int main(int argc, char *argv[])
             engine.rootContext()->setContextProperty("launcher", launcher);
             break;
         }
+    case GlobalCommandLineParser::CoherenceRequested:
+        {
+            // A proxy launcher's command: the Artemis window already running takes the app,
+            // only without one does this process become that window
+            const QStringList arguments = app.arguments();
+            const int action = arguments.indexOf(QRegularExpression("coherence", QRegularExpression::CaseInsensitiveOption));
+            coherenceHost = arguments.value(action + 1);
+            coherenceApp = arguments.value(action + 2);
+            if (coherenceHost.isEmpty() || coherenceApp.isEmpty()) {
+                fprintf(stderr, "Expected: coherence <host uuid> <pinned app id>\n");
+                return 1;
+            }
+            if (CoherenceManager::handOff(coherenceHost, coherenceApp)) {
+                return 0;
+            }
+            initialView = "qrc:/gui/PcView.qml";
+            break;
+        }
     case GlobalCommandLineParser::ListRequested:
         {
             ListCommandLineParser listParser;
@@ -879,6 +912,11 @@ int main(int argc, char *argv[])
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));
         if (engine.rootObjects().isEmpty())
             return -1;
+
+        if (!coherenceHost.isEmpty()) {
+            engine.singletonInstance<CoherenceManager*>("CoherenceManager", "CoherenceManager")
+                    ->launchApp(coherenceHost, coherenceApp);
+        }
 
         // Session opens its stream window on the screen of the Qt window that started it
         if (!streamScreenName.isEmpty()) {

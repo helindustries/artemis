@@ -10,6 +10,9 @@
 
 #include <Limelight.h>
 
+// How long "startmenu" holds its key, as a person would
+#define START_MENU_KEY_HOLD_MS 80
+
 StreamControlClient::StreamControlClient(QString serverName, QString streamId)
     : m_Socket(nullptr),
       m_ServerName(serverName),
@@ -40,6 +43,20 @@ void StreamControlClient::reportFinalState(QString state, QString detail)
     QMetaObject::invokeMethod(this, [this, state, detail]() {
         sendState(state, detail);
         QMetaObject::invokeMethod(QCoreApplication::instance(), "quit", Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
+
+void StreamControlClient::reportEvent(QString event, QString detail)
+{
+    QMetaObject::invokeMethod(this, [this, event, detail]() {
+        if (m_Socket != nullptr && m_Socket->state() == QLocalSocket::ConnectedState) {
+            QJsonObject message;
+            message["id"] = m_StreamId;
+            message["event"] = event;
+            message["detail"] = detail;
+            m_Socket->write(QJsonDocument(message).toJson(QJsonDocument::Compact) + '\n');
+            m_Socket->flush();
+        }
     }, Qt::QueuedConnection);
 }
 
@@ -100,11 +117,24 @@ void StreamControlClient::handleCommand(const QJsonObject& message)
         SDL_PushEvent(&event);
         QMetaObject::invokeMethod(QCoreApplication::instance(), "quit", Qt::QueuedConnection);
     }
-    else if (command == "raise") {
-        SDL_Event event;
+    else if (command == "raise" || command == "minimize" || command == "restore" || command == "move") {
+        SDL_Event event = {};
         event.type = SDL_USEREVENT;
-        event.user.code = SDL_CODE_RAISE_WINDOW;
+        event.user.code = command == "raise" ? SDL_CODE_RAISE_WINDOW :
+                          command == "minimize" ? SDL_CODE_MINIMIZE_WINDOW :
+                          command == "restore" ? SDL_CODE_RESTORE_WINDOW : SDL_CODE_MOVE_WINDOW;
+        event.user.data1 = (void*)(intptr_t)message["dx"].toInt();
+        event.user.data2 = (void*)(intptr_t)message["dy"].toInt();
         SDL_PushEvent(&event);
+    }
+    else if (command == "startmenu") {
+        // F24, which no keyboard has: Heimdall's MacKeySwaps.ahk turns it into the bare Win
+        // tap that every stream chord is otherwise kept from being. Blocking this thread for
+        // the hold delays only further commands.
+        const short f24 = 0x8000 | 0x87;
+        LiSendKeyboardEvent2(f24, KEY_ACTION_DOWN, 0, 0);
+        QThread::msleep(START_MENU_KEY_HOLD_MS);
+        LiSendKeyboardEvent2(f24, KEY_ACTION_UP, 0, 0);
     }
     else if (command == "server-command") {
         // The index into the <ServerCommand> list the host sent; the host checks the permission
@@ -119,6 +149,7 @@ void StreamControlClient::handleCommand(const QJsonObject& message)
         }
     }
     else {
-        qWarning() << "Unknown stream control command:" << command << "(expected stop, raise or server-command)";
+        qWarning() << "Unknown stream control command:" << command
+                   << "(expected stop, raise, minimize, restore, move, startmenu or server-command)";
     }
 }

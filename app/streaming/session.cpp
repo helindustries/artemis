@@ -1516,6 +1516,16 @@ void Session::getWindowDimensions(int& x, int& y,
     }
 
     x = y = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
+
+    // Coherence mode places the window where its host window is, at its size
+    if (m_Preferences->windowId != 0) {
+        width = m_StreamConfig.width;
+        height = m_StreamConfig.height;
+        if (m_Preferences->windowX != INT_MIN && m_Preferences->windowY != INT_MIN) {
+            x = m_Preferences->windowX;
+            y = m_Preferences->windowY;
+        }
+    }
 }
 
 void Session::updateOptimalWindowDisplayMode()
@@ -2003,6 +2013,11 @@ void Session::execInternal()
     // We always want a resizable window with High DPI enabled
     Uint32 defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
 
+    // In coherence mode the host window draws its own title bar and buttons
+    if (m_Preferences->windowId != 0) {
+        defaultWindowFlags |= SDL_WINDOW_BORDERLESS;
+    }
+
     // If we're starting in windowed mode and the Moonlight GUI is maximized or
     // minimized, match that with the streaming window.
     if (!m_IsFullScreen && m_QtWindow != nullptr) {
@@ -2032,6 +2047,10 @@ void Session::execInternal()
 #else
     std::string windowName = QString(m_Computer->name + " - Moonlight").toStdString();
 #endif
+    // In coherence mode the window stands for the host window it shows
+    if (!m_Preferences->windowTitle.isEmpty()) {
+        windowName = QString(m_Preferences->windowTitle + " - " + m_Computer->name).toStdString();
+    }
 
     m_Window = SDL_CreateWindow(windowName.c_str(),
                                 x,
@@ -2272,6 +2291,19 @@ void Session::execInternal()
 #endif
                 SDL_RaiseWindow(m_Window);
                 break;
+            case SDL_CODE_MOVE_WINDOW:
+                {
+                    int x, y;
+                    SDL_GetWindowPosition(m_Window, &x, &y);
+                    SDL_SetWindowPosition(m_Window, x + (int)(intptr_t)event.user.data1, y + (int)(intptr_t)event.user.data2);
+                }
+                break;
+            case SDL_CODE_MINIMIZE_WINDOW:
+                SDL_MinimizeWindow(m_Window);
+                break;
+            case SDL_CODE_RESTORE_WINDOW:
+                SDL_RestoreWindow(m_Window);
+                break;
             default:
                 SDL_assert(false);
             }
@@ -2298,6 +2330,17 @@ void Session::execInternal()
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
+                break;
+            // RESIZED comes only from outside SDL: the user dragged an edge
+            case SDL_WINDOWEVENT_RESIZED:
+                if (m_Preferences->windowId != 0) {
+                    emit windowResized(event.window.data1, event.window.data2);
+                }
+                break;
+            case SDL_WINDOWEVENT_RESTORED:
+                if (m_Preferences->windowId != 0) {
+                    emit windowRestored();
+                }
                 break;
             }
 

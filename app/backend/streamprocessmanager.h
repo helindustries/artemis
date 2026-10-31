@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QVariantMap>
 
+class QJsonObject;
 class QLocalSocket;
 
 // Starts each stream as its own Artemis process, so several can run at once and the
@@ -34,12 +35,16 @@ public:
 
     // profile is a map as StreamProfiles stores it; an empty map streams with the
     // global settings. The host is found by hostUuid, hostName is what the list shows.
-    Q_INVOKABLE void start(const QString& hostUuid, const QString& hostName, const QString& appName,
-                           const QVariantMap& profile);
+    // Coherence mode adds windowId, windowTitle and absoluteMouse. Returns the stream's id.
+    Q_INVOKABLE QString start(const QString& hostUuid, const QString& hostName, const QString& appName,
+                              const QVariantMap& profile);
     Q_INVOKABLE void stop(int row);
+    void stopStream(const QString& id);
     // Stops the streams of one host started with this profile (StreamProfiles::idOf); returns
     // how many it stopped, so a caller can fall back to quitting the host's app
     Q_INVOKABLE int stopProfile(const QString& hostUuid, const QString& profileId);
+    // Sends a command (move, minimize, restore, ...) to the stream once it has connected
+    void commandStream(const QString& id, const QJsonObject& message);
     Q_INVOKABLE void raise(int row);
 
     int count() const;
@@ -51,6 +56,10 @@ signals:
     void countChanged();
     // A stream process ended after reporting an error, which only this window can show
     void streamFailed(QString hostName, QString appName, QString detail);
+    // The stream's process ended, however it ended; id is what start() returned
+    void streamEnded(QString id);
+    // Something the user did to the stream's window (coherence mode: resized, restored)
+    void streamEvent(QString id, QString event, QString detail);
 
 private:
     struct Stream

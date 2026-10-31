@@ -161,6 +161,7 @@ GlobalCommandLineParser::ParseResult GlobalCommandLineParser::parse(const QStrin
         "  quit            Quit the currently running app\n"
         "  stream          Start streaming an app\n"
         "  pair            Pair a new host\n"
+        "  coherence       Start a host's pinned app in coherence mode: coherence <host> <app id>\n"
         "\n"
         "See 'moonlight <action> --help' for help of specific action."
     );
@@ -192,6 +193,8 @@ GlobalCommandLineParser::ParseResult GlobalCommandLineParser::parse(const QStrin
                 return PairRequested;
             } else if (action == "list") {
                 return ListRequested;
+            } else if (action == "coherence") {
+                return CoherenceRequested;
             }
         }
 
@@ -375,6 +378,9 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addValueOption("stream-id", "identifier this stream reports on the control socket");
     parser.addValueOption("screen", "name of the screen to stream on");
     parser.addValueOption("profile-id", "stream profile the host ties this stream's virtual display to");
+    parser.addValueOption("window-id", "host window to stream on its own (coherence mode)");
+    parser.addValueOption("window-title", "title of the host window, shown on this stream's window");
+    parser.addValueOption("window-position", "where this stream's window opens, x,y (coherence mode)");
 
     if (!parser.parse(args)) {
         parser.showError(parser.errorText());
@@ -514,6 +520,24 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     m_StreamId = parser.value("stream-id");
     m_Screen = parser.value("screen");
     preferences->profileId = parser.value("profile-id");
+    if (parser.isSet("window-id")) {
+        bool valid = false;
+        preferences->windowId = parser.value("window-id").toULongLong(&valid);
+        if (!valid || preferences->windowId == 0) {
+            parser.showError("Window id must be a host window's number from its window list");
+        }
+    }
+    preferences->windowTitle = parser.value("window-title");
+    if (parser.isSet("window-position")) {
+        const QStringList position = parser.value("window-position").split(',');
+        bool validX = false;
+        bool validY = false;
+        preferences->windowX = position.value(0).toInt(&validX);
+        preferences->windowY = position.value(1).toInt(&validY);
+        if (position.size() != 2 || !validX || !validY) {
+            parser.showError("Window position must be x,y");
+        }
+    }
 
     // This method will not return and terminates the process if --version or
     // --help is specified

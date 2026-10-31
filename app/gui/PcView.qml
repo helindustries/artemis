@@ -5,6 +5,7 @@ import QtQuick.Layouts 1.3
 import ComputerModel 1.0
 
 import ComputerManager 1.0
+import CoherenceManager 1.0
 import StreamingPreferences 1.0
 import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
@@ -204,6 +205,20 @@ CenteredGridView {
                         var component = Qt.createComponent("AppView.qml")
                         var appView = component.createObject(stackView, {"computerIndex": index, "objectName": model.name, "showHiddenGames": true})
                         stackView.push(appView)
+                    }
+                    visible: model.online && model.paired
+                }
+                NavigableMenuItem {
+                    parentMenu: pcContextMenu
+                    // Every window of the host as a window of its own here
+                    text: CoherenceManager.hostUuid === model.uuid ? qsTr("Stop Coherence Mode") : qsTr("Coherence Mode")
+                    onTriggered: {
+                        if (CoherenceManager.hostUuid === model.uuid) {
+                            CoherenceManager.stop()
+                        }
+                        else {
+                            CoherenceManager.start(model.uuid)
+                        }
                     }
                     visible: model.online && model.paired
                 }

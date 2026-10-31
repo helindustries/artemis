@@ -28,6 +28,26 @@ public:
 };
 Q_DECLARE_TYPEINFO(NvDisplayMode, Q_PRIMITIVE_TYPE);
 
+// A host window coherence mode streams on its own (our host's /windows)
+struct NvHostWindow
+{
+    quint64 id = 0;
+    QString title;
+    QString process;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    bool minimized = false;
+};
+
+// An app the host's user pinned, which coherence mode offers as a launcher here
+struct NvPinnedApp
+{
+    QString id;
+    QString name;
+};
+
 class GfeHttpResponseException : public std::exception
 {
 public:
@@ -185,6 +205,25 @@ public:
 
     QVector<NvApp>
     getAppList();
+
+    QVector<NvHostWindow>
+    getWindows();
+
+    QVector<NvPinnedApp>
+    getPinnedApps();
+
+    QImage
+    getPinnedAppIcon(const QString& id);
+
+    void
+    launchPinnedApp(const QString& id);
+
+    // Coherence mode: brings a host window to the front, restoring it when minimized
+    void
+    raiseWindow(quint64 id);
+
+    void
+    resizeWindow(quint64 id, int width, int height);
 
     QImage
     getBoxArt(int appId);

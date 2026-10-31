@@ -4,6 +4,8 @@
 #include <QRect>
 #include <QQmlEngine>
 
+#include <climits>
+
 class StreamingPreferences : public QObject
 {
     Q_OBJECT
@@ -215,6 +217,13 @@ public:
 
     // Not stored: the stream profile a stream process was started with, sent to the host
     QString profileId;
+
+    // Not stored: in coherence mode, the host window a stream process shows, its title, and
+    // where its window opens (INT_MIN: centered)
+    quint64 windowId = 0;
+    QString windowTitle;
+    int windowX = INT_MIN;
+    int windowY = INT_MIN;
 
 signals:
     void displayModeChanged();

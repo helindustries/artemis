@@ -25,6 +25,10 @@ public:
     // its own that nobody sees (the process has no Dock icon and no window to the front).
     void reportFinalState(QString state, QString detail = QString());
 
+    // Something the user did to the window (coherence mode: resized, restored), apart from
+    // the stream's state. Safe to call from any thread.
+    void reportEvent(QString event, QString detail = QString());
+
 private slots:
     void connectToServer();
     void readCommands();

@@ -19,6 +19,12 @@
 // SDL_PushEvent, which is the only way in while the session holds the main thread.
 #define SDL_CODE_RAISE_WINDOW 106
 
+// Coherence mode: the stream window follows its host window. MOVE carries the offset in
+// data1 and data2; MINIMIZE and RESTORE carry nothing.
+#define SDL_CODE_MOVE_WINDOW 107
+#define SDL_CODE_MINIMIZE_WINDOW 108
+#define SDL_CODE_RESTORE_WINDOW 109
+
 class QuickMenuManager;
 class ServerCommandManager;
 class ClipboardManager;
@@ -168,6 +174,10 @@ signals:
 
     // Emitted after sessionFinished() when the session is ready to be destroyed
     void readyForDeletion();
+
+    // Coherence mode: the user resized or restored the window, which its host window follows
+    void windowResized(int width, int height);
+    void windowRestored();
 
 private:
     void execInternal();

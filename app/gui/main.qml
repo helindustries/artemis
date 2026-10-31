@@ -3,6 +3,7 @@ import QtQuick.Controls 2.3
 import QtQuick.Layouts 1.3
 import QtQuick.Window 2.2
 import QtQuick.Controls.Material 2.2
+import Qt.labs.platform 1.1 as Platform
 
 import ComputerManager 1.0
 import AutoUpdateChecker 1.0
@@ -11,6 +12,7 @@ import SystemProperties 1.0
 import SdlGamepadKeyNavigation 1.0
 import StreamProcessManager 1.0
 import StreamProfiles 1.0
+import CoherenceManager 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
@@ -617,6 +619,34 @@ ApplicationWindow {
         target: StreamProcessManager
         function onStreamFailed(hostName, appName, detail) {
             streamFailedDialog.text = qsTr("%1 on %2 ended:").arg(appName).arg(hostName) + "\n\n" + detail
+            streamFailedDialog.open()
+        }
+    }
+
+    // In coherence mode the host's windows are the only Artemis windows in sight; this entry
+    // reaches the host's start menu and ends the mode
+    Platform.SystemTrayIcon {
+        visible: CoherenceManager.hostUuid !== ""
+        icon.source: "qrc:/res/artemis.svg"
+        icon.mask: true
+        tooltip: qsTr("Artemis: %1 in coherence mode").arg(CoherenceManager.hostName)
+
+        menu: Platform.Menu {
+            Platform.MenuItem {
+                text: qsTr("%1 Start Menu").arg(CoherenceManager.hostName)
+                onTriggered: CoherenceManager.openStartMenu()
+            }
+            Platform.MenuItem {
+                text: qsTr("Stop Coherence Mode")
+                onTriggered: CoherenceManager.stop()
+            }
+        }
+    }
+
+    Connections {
+        target: CoherenceManager
+        function onFailed(hostName, detail) {
+            streamFailedDialog.text = qsTr("Coherence mode on %1 ended: its window list could not be read.").arg(hostName) + "\n\n" + detail
             streamFailedDialog.open()
         }
     }

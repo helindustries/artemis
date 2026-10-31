@@ -50,7 +50,7 @@ win32 {
     }
 
     INCLUDEPATH += $$PWD/../libs/windows/include
-    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib
+    LIBS += ws2_32.lib winmm.lib dxva2.lib ole32.lib gdi32.lib user32.lib d3d9.lib dwmapi.lib dbghelp.lib shell32.lib uuid.lib
 
     # Work around a conflict with math.h inclusion between SDL and Qt 6
     DEFINES += _USE_MATH_DEFINES
@@ -219,6 +219,8 @@ SOURCES += \
     settings/artemissettings.cpp \
     settings/streamprofiles.cpp \
     backend/streamprocessmanager.cpp \
+    backend/coherencemanager.cpp \
+    backend/proxylaunchers.cpp \
     streaming/streamcontrolclient.cpp \
     wm.cpp
 
@@ -245,6 +247,8 @@ HEADERS += \
     settings/streamingpreferences.h \
     settings/streamprofiles.h \
     backend/streamprocessmanager.h \
+    backend/coherencemanager.h \
+    backend/proxylaunchers.h \
     streaming/streamcontrolclient.h \
     streaming/input/input.h \
     streaming/session.h \

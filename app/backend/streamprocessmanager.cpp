@@ -40,8 +40,8 @@ StreamProcessManager::~StreamProcessManager()
     }
 }
 
-void StreamProcessManager::start(const QString& hostUuid, const QString& hostName, const QString& appName,
-                                 const QVariantMap& profile)
+QString StreamProcessManager::start(const QString& hostUuid, const QString& hostName, const QString& appName,
+                                    const QVariantMap& profile)
 {
     Stream stream;
     stream.id = QString::number(m_NextId++);
@@ -74,6 +74,15 @@ void StreamProcessManager::start(const QString& hostUuid, const QString& hostNam
     if (!profile.value("screen").toString().isEmpty()) {
         arguments << "--screen" << profile.value("screen").toString();
     }
+    if (profile.value("windowId").toULongLong() != 0) {
+        arguments << "--window-id" << QString::number(profile.value("windowId").toULongLong())
+                  << "--window-title" << profile.value("windowTitle").toString()
+                  << "--window-position" << QString("%1,%2").arg(profile.value("windowX").toInt())
+                                                            .arg(profile.value("windowY").toInt());
+    }
+    if (profile.value("absoluteMouse").toBool()) {
+        arguments << "--absolute-mouse";
+    }
 
     // Portable mode is chosen by the working directory, so the stream must share ours
     stream.process->setWorkingDirectory(QDir::currentPath());
@@ -95,6 +104,12 @@ void StreamProcessManager::start(const QString& hostUuid, const QString& hostNam
     emit countChanged();
 
     stream.process->start(QCoreApplication::applicationFilePath(), arguments);
+    return stream.id;
+}
+
+void StreamProcessManager::stopStream(const QString& id)
+{
+    stop(rowForId(id));
 }
 
 int StreamProcessManager::stopProfile(const QString& hostUuid, const QString& profileId)
@@ -107,6 +122,17 @@ int StreamProcessManager::stopProfile(const QString& hostUuid, const QString& pr
         }
     }
     return stopped;
+}
+
+void StreamProcessManager::commandStream(const QString& id, const QJsonObject& message)
+{
+    const int row = rowForId(id);
+    if (row >= 0) {
+        QLocalSocket* socket = m_Streams[row].socket;
+        if (socket != nullptr && socket->state() == QLocalSocket::ConnectedState) {
+            socket->write(QJsonDocument(message).toJson(QJsonDocument::Compact) + '\n');
+        }
+    }
 }
 
 void StreamProcessManager::stop(int row)
@@ -170,7 +196,11 @@ void StreamProcessManager::handleSocketData(QLocalSocket* socket)
         buffer.remove(0, newline + 1);
 
         int row = rowForId(message["id"].toString());
-        if (row >= 0) {
+        if (row >= 0 && message.contains("event")) {
+            m_Streams[row].socket = socket;
+            emit streamEvent(m_Streams[row].id, message["event"].toString(), message["detail"].toString());
+        }
+        else if (row >= 0) {
             Stream& stream = m_Streams[row];
             stream.socket = socket;
             stream.state = message["state"].toString();
@@ -192,6 +222,7 @@ void StreamProcessManager::handleProcessFinished(QProcess* process)
         if (const Stream& stream = m_Streams[row]; stream.state == "failed") {
             emit streamFailed(stream.hostName, stream.appName, stream.detail);
         }
+        emit streamEnded(m_Streams[row].id);
         beginRemoveRows(QModelIndex(), row, row);
         m_Streams.removeAt(row);
         endRemoveRows();
