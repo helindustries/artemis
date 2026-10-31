@@ -9,4 +9,8 @@ namespace MacProcess
 
     // Brings the process to the front; an accessory app is not activated by raising its window
     void activate();
+
+    // How far down a fullscreen window starts on a screen: the menu bar band of a screen with a
+    // camera notch, 0 without one. The screen is named by its left edge and size in points.
+    int fullScreenTopInset(int x, int width, int height);
 }

@@ -682,6 +682,26 @@ bool Session::initialize()
     m_StreamConfig.width = m_Preferences->width;
     m_StreamConfig.height = m_Preferences->height;
 
+#ifdef Q_OS_DARWIN
+    // A fullscreen window on a Mac with a camera notch gets the screen without the band beside
+    // the notch (1728x1117 -> 1728x1080 on a 16" MacBook Pro). A stream sized for the whole
+    // screen would be scaled into that with bars at the sides, so it takes the band off too.
+    if (m_IsFullScreen && m_QtWindow != nullptr && m_QtWindow->screen() != nullptr) {
+        const QRect screen = m_QtWindow->screen()->geometry();
+        const int inset = MacProcess::fullScreenTopInset(screen.x(), screen.width(), screen.height());
+        const double streamAspect = (double)m_StreamConfig.width / m_StreamConfig.height;
+        const double screenAspect = (double)screen.width() / screen.height();
+        if (inset > 0 && qAbs(streamAspect - screenAspect) / screenAspect < 0.01) {
+            // Up to even: the band reads a point more than the window loses (38 vs 37)
+            const int height = ((int)std::ceil(m_StreamConfig.height * (double)(screen.height() - inset) / screen.height()) + 1) & ~1;
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "Screen has a %d point notch band: streaming %dx%d instead of %dx%d",
+                        inset, m_StreamConfig.width, height, m_StreamConfig.width, m_StreamConfig.height);
+            m_StreamConfig.height = height;
+        }
+    }
+#endif
+
     // Artemis Apollo integration: Apply resolution scaling if enabled
     if (m_Preferences->enableResolutionScaling && m_Preferences->resolutionScaleFactor != 100) {
         // Apply scaling factor to resolution
