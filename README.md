@@ -2,6 +2,26 @@
 
 [Artemis Qt](https://github.com/wjbeckett/artemis) is an enhanced cross-platform client for NVIDIA GameStream and [Apollo](https://github.com/ClassicOldSong/Apollo)/[Sunshine](https://github.com/LizardByte/Sunshine) servers. It brings the advanced features from [Artemis Android](https://github.com/ClassicOldSong/moonlight-android) to desktop platforms.
 
+## About this fork
+
+This is the client for the [Sunshine fork](https://github.com/helindustries/Sunshine). The goal is
+to stream one host on all of the client's screens, each in its own process, with stream profiles
+per host.
+
+Coherence mode (macOS client, Windows host): every window of the host is its own macOS window.
+Start it from the Coherence tile next to the host's apps; the tile's stop button ends it. The
+host's programs show in the Dock, its pinned tray icons in the menu bar, and UAC prompts
+full-screen.
+
+Status: preview. Releases:
+[helindustries/artemis releases](https://github.com/helindustries/artemis/releases)
+
+Credits:
+- [Artemis Qt](https://github.com/wjbeckett/artemis) by wjbeckett: the base of this fork, with its
+  own credits to Moonlight Qt and Artemis Android in the Attribution section below.
+
+The license stays GPL-3.0 as upstream. Everything below this section is upstream's README.
+
 ## 🙏 Attribution
 
 Artemis Qt is built upon the excellent foundation of [**Moonlight Qt**](https://github.com/moonlight-stream/moonlight-qt) by the [Moonlight Team](https://github.com/moonlight-stream). We extend our sincere gratitude to the original developers for creating such a robust and well-architected streaming client.
