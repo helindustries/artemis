@@ -1,5 +1,7 @@
 #include "coherencedock.h"
 
+#include "backend/proxylaunchers.h"
+
 #include "SDL_compat.h"
 
 #include <QCoreApplication>
@@ -30,23 +32,6 @@
 static QString bundleSafe(const QString& text)
 {
     return QString(text).replace(QRegularExpression("[^A-Za-z0-9.-]"), "-");
-}
-
-// Windows 11's Start logo: four squares in its blue, the margin as on the program icons
-static QImage startIcon()
-{
-    QImage icon(DOCK_ICON_SIZE, DOCK_ICON_SIZE, QImage::Format_ARGB32_Premultiplied);
-    icon.fill(Qt::transparent);
-    QPainter painter(&icon);
-    const int margin = DOCK_ICON_SIZE * (DOCK_ICON_MARGIN_PERCENT + 12) / 100;
-    const int gap = DOCK_ICON_SIZE / 32;
-    const int square = (DOCK_ICON_SIZE - 2 * margin - gap) / 2;
-    for (const int row : { 0, 1 }) {
-        for (const int column : { 0, 1 }) {
-            painter.fillRect(margin + column * (square + gap), margin + row * (square + gap), square, square, QColor(0x00, 0x78, 0xd4));
-        }
-    }
-    return icon;
 }
 
 CoherenceDock::CoherenceDock(NvComputer* computer, const QString& hostName)
@@ -140,7 +125,7 @@ void CoherenceDock::startTile(const QString& program, quint64 windowId)
     QImage icon;
     QString name;
     if (program == COHERENCE_DOCK_START) {
-        icon = startIcon();
+        icon = ProxyLaunchers::windowsLogo(DOCK_ICON_SIZE, DOCK_ICON_MARGIN_PERCENT);
         name = "Start";
     }
     else {

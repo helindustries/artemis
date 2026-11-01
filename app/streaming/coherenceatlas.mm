@@ -11,11 +11,19 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-// How long after a Dock icon's raise AppKit may still finish activating Artemis
+// How long after a Dock icon's raise, or another activation of ours, AppKit may still finish
+// activating Artemis
 #define PENDING_RAISE_MS 1000
 
+// A new window stays invisible until this many frames went into it: the stream shows a window's
+// region of the atlas a few frames after the host lists it there, and before that the region
+// holds another window, or nothing
+#define REVEAL_AFTER_FRAMES 6
+
+std::atomic<Uint32> CoherenceAtlas::s_FocusRaiseHeldUntil { 0 };
 QMutex CoherenceAtlas::s_TargetLock;
 QVector<CoherenceAtlas::Target> CoherenceAtlas::s_Targets;
+QHash<quint64, int> CoherenceAtlas::s_FramesDrawn;
 bool CoherenceAtlas::s_Active = false;
 
 static NSWindow* cocoaWindow(SDL_Window* window)
@@ -77,6 +85,10 @@ CoherenceAtlas::~CoherenceAtlas()
         SDL_Metal_DestroyView(shown.view);
         SDL_DestroyWindow(shown.window);
     }
+    if (m_SecureDesktop.window != nullptr) {
+        SDL_Metal_DestroyView(m_SecureDesktop.view);
+        SDL_DestroyWindow(m_SecureDesktop.window);
+    }
 }
 
 void CoherenceAtlas::hide(SDL_Window* window)
@@ -89,11 +101,22 @@ void CoherenceAtlas::hide(SDL_Window* window)
     }
 }
 
+void CoherenceAtlas::holdFocusRaise()
+{
+    s_FocusRaiseHeldUntil = SDL_GetTicks() + PENDING_RAISE_MS;
+}
+
+bool CoherenceAtlas::focusRaiseHeld()
+{
+    return !SDL_TICKS_PASSED(SDL_GetTicks(), s_FocusRaiseHeldUntil.load());
+}
+
 void CoherenceAtlas::show(const NvHostWindow& host, const QRect& frame)
 {
+    holdFocusRaise();
     // Popups stay above the windows, as menus and tooltips do on the host. Windows take AppKit's
     // resize edges and cursors, which the host's own borders do not show here
-    Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI;
+    Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN;
     if (host.popup) {
         flags |= SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_SKIP_TASKBAR;
     }
@@ -104,7 +127,21 @@ void CoherenceAtlas::show(const NvHostWindow& host, const QRect& frame)
             window != nullptr) {
         if (SDL_MetalView view = SDL_Metal_CreateView(window); view != nullptr) {
             shapeLikeHostWindow(window, frame.size(), m_Screens);
-            m_Shown.insert(host.id, { window, view, host });
+            if (host.popup) {
+                ((CAMetalLayer*)SDL_Metal_GetLayer(view)).opaque = NO;
+            }
+            // On screen but transparent until revealDrawn(): a hidden window's layer would hold
+            // on to its drawables and stall the renderer
+            if (NSWindow* cocoa = cocoaWindow(window); cocoa != nil) {
+                cocoa.alphaValue = 0;
+                cocoa.ignoresMouseEvents = YES;
+            }
+            {
+                QMutexLocker lock(&s_TargetLock);
+                s_FramesDrawn.remove(host.id);
+            }
+            m_Shown.insert(host.id, { window, view, host, false });
+            SDL_ShowWindow(window);
         }
         else {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
@@ -120,12 +157,13 @@ void CoherenceAtlas::show(const NvHostWindow& host, const QRect& frame)
     }
 }
 
-void CoherenceAtlas::apply(const QVector<NvHostWindow>& windows)
+void CoherenceAtlas::apply(const AtlasLayout& layout)
 {
     QSet<quint64> listed;
     m_FrontWindow = 0;
-    m_Listed = windows;
-    for (const NvHostWindow& host : windows) {
+    m_Listed = layout.windows;
+    m_StreamSize = layout.streamSize;
+    for (const NvHostWindow& host : layout.windows) {
         listed.insert(host.id);
         if (m_FrontWindow == 0 && !host.popup && !host.minimized) {
             m_FrontWindow = host.id;
@@ -171,10 +209,87 @@ void CoherenceAtlas::apply(const QVector<NvHostWindow>& windows)
             ++shown;
         }
     }
+    QVector<quint64> order;
+    for (const NvHostWindow& host : layout.windows) {
+        if (!host.popup && !host.minimized && m_Shown.contains(host.id)) {
+            order.append(host.id);
+        }
+    }
+    if (order != m_Order) {
+        m_Order = order;
+        orderLikeHost();
+    }
+    revealDrawn();
+
+    if (layout.secureDesktop && m_SecureDesktop.window == nullptr && layout.streamSize.isValid()) {
+        showSecureDesktop(layout.streamSize);
+    }
+    else if (!layout.secureDesktop && m_SecureDesktop.window != nullptr) {
+        gone.append(m_SecureDesktop);
+        m_SecureDesktop = {};
+    }
     updateTargets();
     for (const Shown& shown : gone) {
         SDL_Metal_DestroyView(shown.view);
         SDL_DestroyWindow(shown.window);
+    }
+}
+
+void CoherenceAtlas::revealDrawn()
+{
+    QMutexLocker lock(&s_TargetLock);
+    for (Shown& shown : m_Shown) {
+        if (!shown.revealed && s_FramesDrawn.value(shown.host.id) >= REVEAL_AFTER_FRAMES) {
+            if (NSWindow* cocoa = cocoaWindow(shown.window); cocoa != nil) {
+                cocoa.alphaValue = 1;
+                cocoa.ignoresMouseEvents = NO;
+            }
+            shown.revealed = true;
+        }
+    }
+}
+
+void CoherenceAtlas::orderLikeHost()
+{
+    // Relative to the window of ours in front, so Artemis keeps its place among other apps'
+    // windows and is not activated
+    NSInteger anchor = 0;
+    for (NSWindow* window in NSApp.orderedWindows) {
+        if (window.visible && anchor == 0) {
+            for (const Shown& shown : m_Shown) {
+                if (cocoaWindow(shown.window) == window && !shown.host.popup) {
+                    anchor = window.windowNumber;
+                }
+            }
+        }
+    }
+
+    NSWindow* above = nil;
+    for (const quint64 id : m_Order) {
+        if (NSWindow* cocoa = cocoaWindow(m_Shown[id].window); cocoa != nil) {
+            if (above != nil) {
+                [cocoa orderWindow:NSWindowBelow relativeTo:above.windowNumber];
+            }
+            else if (anchor != 0 && anchor != cocoa.windowNumber) {
+                [cocoa orderWindow:NSWindowAbove relativeTo:anchor];
+            }
+            above = cocoa;
+        }
+    }
+}
+
+void CoherenceAtlas::activateFront()
+{
+    holdFocusRaise();
+    if (const auto front = m_Shown.constFind(m_FrontWindow);
+            front != m_Shown.cend() && (SDL_GetWindowFlags(front->window) & SDL_WINDOW_HIDDEN) == 0) {
+        m_PendingRaise = { m_FrontWindow };
+        m_PendingRaiseDeadline = SDL_GetTicks() + PENDING_RAISE_MS;
+        m_PendingReorder = true;
+        SDL_RaiseWindow(front->window);
+    }
+    else {
+        MacProcess::activate();
     }
 }
 
@@ -247,10 +362,15 @@ bool CoherenceAtlas::finishRaise()
                 SDL_RaiseWindow(shown->window);
             }
         }
+        // The window brought back went to the front of the others too
+        if (m_PendingReorder) {
+            orderLikeHost();
+        }
     }
     else {
         m_PendingRaise.clear();
     }
+    m_PendingReorder = false;
     return pending;
 }
 
@@ -267,14 +387,44 @@ bool CoherenceAtlas::isPopup(Uint32 sdlWindowId) const
 
 void CoherenceAtlas::updateTargets()
 {
+    // While the stream shows the host's primary display, no window's region holds that window
     QVector<Target> targets;
-    for (auto shown = m_Shown.cbegin(); shown != m_Shown.cend(); ++shown) {
-        if (!shown->host.minimized && shown->host.atlas.isValid()) {
-            targets.append({ SDL_Metal_GetLayer(shown->view), shown->host.atlas, shown.key() });
+    if (m_SecureDesktop.window != nullptr) {
+        targets.append({ SDL_Metal_GetLayer(m_SecureDesktop.view), QRect(QPoint(0, 0), m_StreamSize), 0, false });
+    }
+    else {
+        for (auto shown = m_Shown.cbegin(); shown != m_Shown.cend(); ++shown) {
+            if (!shown->host.minimized && shown->host.atlas.isValid()) {
+                targets.append({ SDL_Metal_GetLayer(shown->view), shown->host.atlas, shown.key(), shown->host.popup });
+            }
         }
     }
     QMutexLocker lock(&s_TargetLock);
     s_Targets = targets;
+}
+
+void CoherenceAtlas::showSecureDesktop(const QSize& streamSize)
+{
+    // The whole stream, as large as it fits on the primary screen and centered there: the host
+    // maps the pointer back the same way
+    const QRect screen = m_Screens.value(0);
+    const QSize size = streamSize.scaled(screen.size(), Qt::KeepAspectRatio);
+    const QRect frame(screen.x() + (screen.width() - size.width()) / 2, screen.y() + (screen.height() - size.height()) / 2, size.width(), size.height());
+    if (SDL_Window* window = SDL_CreateWindow("Secure Desktop", frame.x(), frame.y(), frame.width(), frame.height(),
+                                              SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_ALWAYS_ON_TOP);
+            window != nullptr) {
+        if (SDL_MetalView view = SDL_Metal_CreateView(window); view != nullptr) {
+            m_SecureDesktop = { window, view, NvHostWindow() };
+            SDL_RaiseWindow(window);
+            MacProcess::activate();
+        }
+        else {
+            SDL_DestroyWindow(window);
+        }
+    }
+    if (m_SecureDesktop.window == nullptr) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Expected a window for the host's secure desktop, but: %s", SDL_GetError());
+    }
 }
 
 void CoherenceAtlas::refreshSources(const QVector<NvHostWindow>& windows)
@@ -354,7 +504,11 @@ QVector<CoherenceAtlas::Target> CoherenceAtlas::takeTargets()
 
 void CoherenceAtlas::releaseTargets(const QVector<Target>& targets)
 {
+    QMutexLocker lock(&s_TargetLock);
     for (const Target& target : targets) {
         CFRelease(target.metalLayer);
+        if (target.hostWindow != 0) {
+            ++s_FramesDrawn[target.hostWindow];
+        }
     }
 }

@@ -125,6 +125,7 @@ public:
           m_OverlayTextures{},
           m_OverlayLock(0),
           m_VideoPipelineState(nullptr),
+          m_KeyedPipelineState(nullptr),
           m_OverlayPipelineState(nullptr),
           m_ShaderLibrary(nullptr),
           m_CommandQueue(nullptr),
@@ -168,6 +169,10 @@ public:
 
         if (m_VideoPipelineState != nullptr) {
             [m_VideoPipelineState release];
+        }
+
+        if (m_KeyedPipelineState != nullptr) {
+            [m_KeyedPipelineState release];
         }
 
         for (int i = 0; i < Overlay::OverlayMax; i++) {
@@ -389,6 +394,16 @@ public:
             if (!m_VideoPipelineState) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                              "Failed to create video pipeline state");
+                return false;
+            }
+
+            // The coherence atlas draws popups with black keyed out
+            pipelineDesc.fragmentFunction = [[m_ShaderLibrary newFunctionWithName:planes == 2 ? @"ps_draw_biplanar_keyed" : @"ps_draw_triplanar_keyed"] autorelease];
+            [m_KeyedPipelineState release];
+            m_KeyedPipelineState = [m_MetalLayer.device newRenderPipelineStateWithDescriptor:pipelineDesc error:nullptr];
+            if (!m_KeyedPipelineState) {
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                             "Failed to create keyed video pipeline state");
                 return false;
             }
 
@@ -689,7 +704,7 @@ public:
                 renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
                 renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
                 auto renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
-                [renderEncoder setRenderPipelineState:m_VideoPipelineState];
+                [renderEncoder setRenderPipelineState:target.keyed ? m_KeyedPipelineState : m_VideoPipelineState];
                 for (size_t i = 0; i < planes; i++) {
                     [renderEncoder setFragmentTexture:frame->format == AV_PIX_FMT_VIDEOTOOLBOX ?
                                                           CVMetalTextureGetTexture(cvMetalTextures[i]) :
@@ -1020,6 +1035,7 @@ private:
     id<MTLTexture> m_OverlayTextures[Overlay::OverlayMax];
     SDL_SpinLock m_OverlayLock;
     id<MTLRenderPipelineState> m_VideoPipelineState;
+    id<MTLRenderPipelineState> m_KeyedPipelineState;
     id<MTLRenderPipelineState> m_OverlayPipelineState;
     id<MTLLibrary> m_ShaderLibrary;
     id<MTLCommandQueue> m_CommandQueue;

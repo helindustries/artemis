@@ -4,6 +4,7 @@ import QtQuick.Layouts 1.3
 import QtQuick.Window 2.2
 import QtQuick.Controls.Material 2.2
 import Qt.labs.platform 1.1 as Platform
+import Qt.labs.settings 1.0
 
 import ComputerManager 1.0
 import AutoUpdateChecker 1.0
@@ -23,8 +24,18 @@ ApplicationWindow {
     property bool clearOnBack: false
 
     id: window
-    width: 1280
-    height: 600
+    width: windowSettings.width
+    height: windowSettings.height
+
+    // The size the window was last left at, unless maximized or fullscreen
+    Settings {
+        id: windowSettings
+        category: "MainWindow"
+        property int width: 1280
+        property int height: 600
+    }
+    onWidthChanged: if (visibility === Window.Windowed) windowSettings.width = width
+    onHeightChanged: if (visibility === Window.Windowed) windowSettings.height = height
 
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {

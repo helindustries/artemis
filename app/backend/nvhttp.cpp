@@ -397,7 +397,7 @@ NvHTTP::getAppList()
 }
 
 QVector<NvHostWindow>
-NvHTTP::getWindows(const QVector<QRect>& screens, bool* onScreen, QSize* atlasSize)
+NvHTTP::getWindows(const QVector<QRect>& screens, bool* onScreen, QSize* atlasSize, bool* secureDesktop)
 {
     QStringList areas;
     for (const QRect& screen : screens) {
@@ -422,6 +422,9 @@ NvHTTP::getWindows(const QVector<QRect>& screens, bool* onScreen, QSize* atlasSi
     if (atlasSize != nullptr) {
         *atlasSize = QSize();
     }
+    if (secureDesktop != nullptr) {
+        *secureDesktop = false;
+    }
     while (!xmlReader.atEnd()) {
         while (xmlReader.readNextStartElement()) {
             auto name = xmlReader.name();
@@ -438,6 +441,9 @@ NvHTTP::getWindows(const QVector<QRect>& screens, bool* onScreen, QSize* atlasSi
             }
             else if (windows.isEmpty() && name == QString("AtlasHeight") && atlasSize != nullptr) {
                 atlasSize->setHeight(xmlReader.readElementText().toInt());
+            }
+            else if (windows.isEmpty() && name == QString("SecureDesktop") && secureDesktop != nullptr) {
+                *secureDesktop = xmlReader.readElementText() == "1";
             }
             else if (windows.isEmpty()) {
                 continue;
@@ -626,6 +632,45 @@ NvHTTP::openCoherenceStartMenu()
     openConnectionToString(m_BaseUrlHttps,
                            "actions/coherence",
                            "op=startmenu",
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
+QVector<NvTrayIcon>
+NvHTTP::getTrayIcons()
+{
+    QString trayXml = openConnectionToString(m_BaseUrlHttps,
+                                             "windows/tray",
+                                             nullptr,
+                                             REQUEST_TIMEOUT_MS,
+                                             NvLogLevel::NVLL_ERROR);
+    verifyResponseStatus(trayXml);
+
+    QVector<NvTrayIcon> icons;
+    QXmlStreamReader xmlReader(trayXml);
+    while (!xmlReader.atEnd()) {
+        while (xmlReader.readNextStartElement()) {
+            auto name = xmlReader.name();
+            if (name == QString("TrayIcon")) {
+                icons.append(NvTrayIcon());
+            }
+            else if (name == QString("Name") && !icons.isEmpty()) {
+                icons.last().name = xmlReader.readElementText();
+            }
+            else if (name == QString("Icon") && !icons.isEmpty()) {
+                icons.last().png = QByteArray::fromBase64(xmlReader.readElementText().toLatin1());
+            }
+        }
+    }
+    return icons;
+}
+
+void
+NvHTTP::clickTrayIcon(int index, bool right)
+{
+    openConnectionToString(m_BaseUrlHttps,
+                           "actions/coherence",
+                           QString("op=trayclick&index=%1&button=%2").arg(index).arg(right ? "right" : "left"),
                            REQUEST_TIMEOUT_MS,
                            NvLogLevel::NVLL_ERROR);
 }

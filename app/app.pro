@@ -436,12 +436,14 @@ macx {
         streaming/video/ffmpeg-renderers/vt_metal.mm \
         streaming/coherenceatlas.mm \
         streaming/coherencedock.cpp \
+        streaming/coherencetray.mm \
         streaming/macprocess.mm
 
     HEADERS += \
         streaming/video/ffmpeg-renderers/vt.h \
         streaming/coherenceatlas.h \
         streaming/coherencedock.h \
+        streaming/coherencetray.h \
         streaming/macprocess.h
 
     # The Dock icon app coherence mode copies once per host program; a separate executable, as

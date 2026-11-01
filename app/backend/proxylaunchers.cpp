@@ -6,6 +6,7 @@
 #include <QDir>
 #include <QFile>
 #include <QImageWriter>
+#include <QPainter>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
@@ -15,6 +16,9 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #endif
+
+// The coherence launcher's icon, as large as the host's app icons come
+#define LAUNCHER_ICON_SIZE 256
 
 namespace
 {
@@ -28,9 +32,14 @@ QString fileName(const QString& name)
     return cleaned.isEmpty() ? QStringLiteral("App") : cleaned;
 }
 
+// Without an app, coherence mode starts and nothing is launched on the host
 QStringList command(const QString& hostUuid, const QString& appId)
 {
-    return { QCoreApplication::applicationFilePath(), "coherence", hostUuid, appId };
+    QStringList parts { QCoreApplication::applicationFilePath(), "coherence", hostUuid };
+    if (!appId.isEmpty()) {
+        parts.append(appId);
+    }
+    return parts;
 }
 
 bool writeFile(const QString& path, const QByteArray& content)
@@ -226,5 +235,23 @@ void writeHost(const QString& hostUuid, const QString& hostName, const QVector<P
 
 void ProxyLaunchers::write(const QString& hostUuid, const QString& hostName, const QVector<App>& apps)
 {
-    writeHost(hostUuid, hostName, apps);
+    QVector<App> launchers { { QString(), QString("%1 Coherence").arg(hostName), windowsLogo(LAUNCHER_ICON_SIZE, 0) } };
+    launchers.append(apps);
+    writeHost(hostUuid, hostName, launchers);
+}
+
+QImage ProxyLaunchers::windowsLogo(int size, int marginPercent)
+{
+    QImage logo(size, size, QImage::Format_ARGB32_Premultiplied);
+    logo.fill(Qt::transparent);
+    QPainter painter(&logo);
+    const int margin = size * (marginPercent + 12) / 100;
+    const int gap = size / 32;
+    const int square = (size - 2 * margin - gap) / 2;
+    for (const int row : { 0, 1 }) {
+        for (const int column : { 0, 1 }) {
+            painter.fillRect(margin + column * (square + gap), margin + row * (square + gap), square, square, QColor(0x00, 0x78, 0xd4));
+        }
+    }
+    return logo;
 }

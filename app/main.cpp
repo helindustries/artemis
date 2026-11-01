@@ -879,13 +879,14 @@ int main(int argc, char *argv[])
     case GlobalCommandLineParser::CoherenceRequested:
         {
             // A proxy launcher's command: the Artemis window already running takes the app,
-            // only without one does this process become that window
+            // only without one does this process become that window. Without an app, coherence
+            // mode starts and nothing is launched on the host
             const QStringList arguments = app.arguments();
             const int action = arguments.indexOf(QRegularExpression("coherence", QRegularExpression::CaseInsensitiveOption));
             coherenceHost = arguments.value(action + 1);
             coherenceApp = arguments.value(action + 2);
-            if (coherenceHost.isEmpty() || coherenceApp.isEmpty()) {
-                fprintf(stderr, "Expected: coherence <host uuid> <pinned app id>\n");
+            if (coherenceHost.isEmpty()) {
+                fprintf(stderr, "Expected: coherence <host uuid> [pinned app id]\n");
                 return 1;
             }
             if (CoherenceManager::handOff(coherenceHost, coherenceApp)) {

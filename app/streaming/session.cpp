@@ -5,6 +5,7 @@
 #include "backend/coherencemanager.h"
 #include "streaming/coherenceatlas.h"
 #include "streaming/coherencedock.h"
+#include "streaming/coherencetray.h"
 #include "streaming/macprocess.h"
 #endif
 #include "backend/richpresencemanager.h"
@@ -165,9 +166,13 @@ void Session::pollAtlasLayout(bool poll)
                     // Only the newest list counts: one queued while AppKit holds the main thread
                     // in a resize is stale by the time the event loop runs
                     NvHTTP http(computer);
-                    auto* windows = new QVector<NvHostWindow>(http.getWindows(screens));
-                    CoherenceAtlas::refreshSources(*windows);
-                    if (QVector<NvHostWindow>* unapplied = m_LatestAtlasLayout.exchange(windows); unapplied != nullptr) {
+                    auto* layout = new AtlasLayout();
+                    bool onScreen = false;
+                    layout->windows = http.getWindows(screens, &onScreen, &layout->streamSize, &layout->secureDesktop);
+                    if (!layout->secureDesktop) {
+                        CoherenceAtlas::refreshSources(layout->windows);
+                    }
+                    if (AtlasLayout* unapplied = m_LatestAtlasLayout.exchange(layout); unapplied != nullptr) {
                         delete unapplied;
                     }
                     else {
@@ -266,7 +271,7 @@ void Session::handleAtlasWindowEvent(const SDL_WindowEvent& event)
         break;
     case SDL_WINDOWEVENT_FOCUS_GAINED:
     case SDL_WINDOWEVENT_RESTORED:
-        if (!m_CoherenceAtlas->finishRaise()) {
+        if (!m_CoherenceAtlas->finishRaise() && !CoherenceAtlas::focusRaiseHeld()) {
             raiseAtlasWindow(event.windowID);
         }
         break;
@@ -2330,6 +2335,7 @@ void Session::execInternal()
         CoherenceAtlas::hide(m_Window);
         m_CoherenceAtlas = new CoherenceAtlas(m_Preferences->coherenceArea, m_Computer);
         m_CoherenceDock = new CoherenceDock(m_Computer, m_Computer->name);
+        m_CoherenceTray = new CoherenceTray(m_Computer, [this]() { m_CoherenceAtlas->activateFront(); });
         pollAtlasLayout(true);
     }
 #endif
@@ -2522,12 +2528,17 @@ void Session::execInternal()
                 break;
 #ifdef Q_OS_DARWIN
             case SDL_CODE_ATLAS_LAYOUT:
-                if (QVector<NvHostWindow>* windows = m_LatestAtlasLayout.exchange(nullptr); windows != nullptr) {
+                if (AtlasLayout* layout = m_LatestAtlasLayout.exchange(nullptr); layout != nullptr) {
                     if (m_CoherenceAtlas != nullptr) {
-                        m_CoherenceAtlas->apply(*windows);
-                        m_CoherenceDock->update(*windows);
+                        m_CoherenceAtlas->apply(*layout);
+                        m_CoherenceDock->update(layout->windows);
                     }
-                    delete windows;
+                    delete layout;
+                }
+                break;
+            case SDL_CODE_TRAY_ICONS:
+                if (m_CoherenceTray != nullptr) {
+                    m_CoherenceTray->applyLatest();
                 }
                 break;
             case SDL_CODE_DOCK_RAISE: {
@@ -2535,7 +2546,9 @@ void Session::execInternal()
                 // Start's keys go to the host through these windows, not the Dock icon
                 if (*program == COHERENCE_DOCK_START) {
                     openHostStartMenu();
-                    MacProcess::activate();
+                    if (m_CoherenceAtlas != nullptr) {
+                        m_CoherenceAtlas->activateFront();
+                    }
                 }
                 else if (m_CoherenceAtlas != nullptr) {
                     m_CoherenceAtlas->raiseProgram(*program);
@@ -2866,6 +2879,8 @@ DispatchDeferredCleanup:
     }
 #ifdef Q_OS_DARWIN
     pollAtlasLayout(false);
+    delete m_CoherenceTray;
+    m_CoherenceTray = nullptr;
     delete m_CoherenceDock;
     m_CoherenceDock = nullptr;
     delete m_CoherenceAtlas;

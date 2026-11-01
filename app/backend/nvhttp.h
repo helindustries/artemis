@@ -47,6 +47,13 @@ struct NvHostWindow
     QRect atlas;
 };
 
+// One of the host's pinned tray icons (our host's /windows/tray): its tooltip and picture as PNG
+struct NvTrayIcon
+{
+    QString name;
+    QByteArray png;
+};
+
 // An app the host's user pinned, which coherence mode offers as a launcher here
 struct NvPinnedApp
 {
@@ -215,9 +222,10 @@ public:
     // With screens (their free areas relative to the top-left of all of them, the primary first),
     // the host gathers its windows on screens of those sizes, arranged alike (coherence mode),
     // and onScreen tells whether it did: positions are then relative to the screens. atlasSize is
-    // the size of the screens' atlas, invalid where the host draws none
+    // the size of the screens' atlas, invalid where the host draws none. secureDesktop tells
+    // whether the atlas stream shows the host's primary display meanwhile, with a UAC prompt
     QVector<NvHostWindow>
-    getWindows(const QVector<QRect>& screens = {}, bool* onScreen = nullptr, QSize* atlasSize = nullptr);
+    getWindows(const QVector<QRect>& screens = {}, bool* onScreen = nullptr, QSize* atlasSize = nullptr, bool* secureDesktop = nullptr);
 
     QVector<NvPinnedApp>
     getPinnedApps();
@@ -239,6 +247,14 @@ public:
     // Coherence mode: opens the host's Start menu on our coherence screen
     void
     openCoherenceStartMenu();
+
+    // Coherence mode: the host's pinned tray icons, in their order on its taskbar
+    QVector<NvTrayIcon>
+    getTrayIcons();
+
+    // Coherence mode: clicks the host's tray icon at an index of getTrayIcons(), right for its menu
+    void
+    clickTrayIcon(int index, bool right);
 
     // Coherence mode: asks a host window to close, as its close button does
     void

@@ -61,3 +61,34 @@ fragment float4 ps_draw_rgb(Vertex v [[ stage_in ]],
 {
     return rgbTexture.sample(s, v.texCoords);
 }
+
+// Coherence popups (menus, tooltips) arrive on black where their window is transparent, which
+// a stream cannot carry: near-black turns transparent, fading in over a few levels
+float4 keyed(float3 yuv, constant CscParams &cscParams)
+{
+    yuv *= cscParams.bitnessScaleFactor;
+    yuv -= cscParams.offsets;
+    const float3 rgb = float3(dot(yuv, cscParams.matrix[0]), dot(yuv, cscParams.matrix[1]), dot(yuv, cscParams.matrix[2]));
+    const float alpha = smoothstep(0.02f, 0.06f, max(rgb.r, max(rgb.g, rgb.b)));
+    return float4(rgb * alpha, alpha);
+}
+
+fragment float4 ps_draw_biplanar_keyed(Vertex v [[ stage_in ]],
+                                       constant CscParams &cscParams [[ buffer(0) ]],
+                                       texture2d<float> luminancePlane [[ texture(0) ]],
+                                       texture2d<float> chrominancePlane [[ texture(1) ]])
+{
+    return keyed(float3(luminancePlane.sample(s, v.texCoords).r, chrominancePlane.sample(s, v.texCoords).rg), cscParams);
+}
+
+fragment float4 ps_draw_triplanar_keyed(Vertex v [[ stage_in ]],
+                                        constant CscParams &cscParams [[ buffer(0) ]],
+                                        texture2d<float> luminancePlane [[ texture(0) ]],
+                                        texture2d<float> chrominancePlaneU [[ texture(1) ]],
+                                        texture2d<float> chrominancePlaneV [[ texture(2) ]])
+{
+    return keyed(float3(luminancePlane.sample(s, v.texCoords).r,
+                        chrominancePlaneU.sample(s, v.texCoords).r,
+                        chrominancePlaneV.sample(s, v.texCoords).r),
+                 cscParams);
+}

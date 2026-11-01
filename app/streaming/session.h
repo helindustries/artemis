@@ -33,7 +33,8 @@
 
 class CoherenceAtlas;
 class CoherenceDock;
-struct NvHostWindow;
+class CoherenceTray;
+struct AtlasLayout;
 class QuickMenuManager;
 class ServerCommandManager;
 class ClipboardManager;
@@ -315,6 +316,7 @@ private:
     // Coherence atlas: one window per host window, laid out as the host's window list says
     CoherenceAtlas* m_CoherenceAtlas = nullptr;
     CoherenceDock* m_CoherenceDock = nullptr;
+    CoherenceTray* m_CoherenceTray = nullptr;
     void pollAtlasLayout(bool poll);
     void handleAtlasWindowEvent(const SDL_WindowEvent& event);
     void raiseAtlasWindow(Uint32 sdlWindowId);
@@ -323,7 +325,7 @@ private:
     bool m_CommandTapPending = false;
     std::atomic<bool> m_AtlasPolling {false};
     std::thread m_AtlasPoller;
-    std::atomic<QVector<NvHostWindow>*> m_LatestAtlasLayout {nullptr};
+    std::atomic<AtlasLayout*> m_LatestAtlasLayout {nullptr};
     IVideoDecoder* m_VideoDecoder;
     SDL_SpinLock m_DecoderLock;
     bool m_AudioDisabled;
