@@ -31,6 +31,10 @@
 // Coherence atlas: a newer host window list waits in m_LatestAtlasLayout
 #define SDL_CODE_ATLAS_LAYOUT 110
 
+// A Command press this soon after focus is Cmd+Tab's, one released after this long no tap
+#define COMMAND_TAP_AFTER_FOCUS_MS 300
+#define COMMAND_TAP_MAX_MS 500
+
 class CoherenceAtlas;
 class CoherenceDock;
 class CoherenceTray;
@@ -323,6 +327,8 @@ private:
     void trackCommandTap(const SDL_KeyboardEvent& event);
     void openHostStartMenu();
     bool m_CommandTapPending = false;
+    Uint32 m_CommandTapStart = 0;
+    Uint32 m_AtlasFocusGainedTicks = 0;
     std::atomic<bool> m_AtlasPolling {false};
     std::thread m_AtlasPoller;
     std::atomic<AtlasLayout*> m_LatestAtlasLayout {nullptr};

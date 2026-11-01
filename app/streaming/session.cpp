@@ -226,14 +226,19 @@ void Session::raiseAtlasWindow(Uint32 sdlWindowId)
 void Session::trackCommandTap(const SDL_KeyboardEvent& event)
 {
     // A bare Command tap is the Start key, as a bare Win tap is on the host; the host's key
-    // remapping keeps the forwarded Win tap from opening Start on its primary display
+    // remapping keeps the forwarded Win tap from opening Start on its primary display. SDL
+    // reports a Command still held from Cmd+Tab as pressed when Artemis gains focus, which is
+    // no tap, and neither is a press held longer than a tap
     const bool command = event.keysym.scancode == SDL_SCANCODE_LGUI || event.keysym.scancode == SDL_SCANCODE_RGUI;
     if (event.type == SDL_KEYDOWN && !event.repeat) {
-        m_CommandTapPending = command;
+        m_CommandTapPending = command && SDL_TICKS_PASSED(event.timestamp, m_AtlasFocusGainedTicks + COMMAND_TAP_AFTER_FOCUS_MS);
+        m_CommandTapStart = event.timestamp;
     }
     else if (event.type == SDL_KEYUP && command && m_CommandTapPending) {
         m_CommandTapPending = false;
-        openHostStartMenu();
+        if (!SDL_TICKS_PASSED(event.timestamp, m_CommandTapStart + COMMAND_TAP_MAX_MS)) {
+            openHostStartMenu();
+        }
     }
 }
 
@@ -271,6 +276,10 @@ void Session::handleAtlasWindowEvent(const SDL_WindowEvent& event)
         break;
     case SDL_WINDOWEVENT_FOCUS_GAINED:
     case SDL_WINDOWEVENT_RESTORED:
+        if (event.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+            m_AtlasFocusGainedTicks = event.timestamp;
+            m_CommandTapPending = false;
+        }
         if (!m_CoherenceAtlas->finishRaise() && !CoherenceAtlas::focusRaiseHeld()) {
             raiseAtlasWindow(event.windowID);
         }
