@@ -71,8 +71,9 @@ ListView {
 
     function computerLost()
     {
-        // Go back to the PC view on PC loss
-        stackView.pop()
+        // Go back to the PC view on PC loss. main.qml's stackView id does not resolve in a
+        // handler the model's signal calls; the attached view does
+        profileRows.StackView.view.pop()
     }
 
     StackView.onActivated: {
@@ -447,7 +448,7 @@ ListView {
             var component = Qt.createComponent("QuitSegue.qml")
             var params = {"appName": appName, "quitRunningAppFn": function() { appModel.quitRunningApp() },
                           "nextAppName": null, "nextSession": null}
-            stackView.push(component.createObject(stackView, params))
+            profileRows.StackView.view.push(component.createObject(profileRows.StackView.view, params))
         }
 
         onAccepted: quitApp()
