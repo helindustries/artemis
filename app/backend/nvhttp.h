@@ -6,6 +6,7 @@
 
 #include <Limelight.h>
 
+#include <QSize>
 #include <QUrl>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -206,8 +207,10 @@ public:
     QVector<NvApp>
     getAppList();
 
+    // With a screen size, the host gathers its windows on a screen of that size (coherence mode)
+    // and onScreen tells whether it did: positions are then relative to that screen
     QVector<NvHostWindow>
-    getWindows();
+    getWindows(QSize screenSize = QSize(), bool* onScreen = nullptr);
 
     QVector<NvPinnedApp>
     getPinnedApps();
@@ -224,6 +227,10 @@ public:
 
     void
     resizeWindow(quint64 id, int width, int height);
+
+    // Coherence mode ended: the host removes the screen it gathered our windows on
+    void
+    stopCoherence();
 
     QImage
     getBoxArt(int appId);

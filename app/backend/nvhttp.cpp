@@ -394,22 +394,33 @@ NvHTTP::getAppList()
 }
 
 QVector<NvHostWindow>
-NvHTTP::getWindows()
+NvHTTP::getWindows(QSize screenSize, bool* onScreen)
 {
+    QString arguments;
+    if (screenSize.isValid()) {
+        arguments = QString("screenWidth=%1&screenHeight=%2").arg(screenSize.width()).arg(screenSize.height());
+    }
     QString windowsXml = openConnectionToString(m_BaseUrlHttps,
                                                 "windows",
-                                                nullptr,
+                                                arguments,
                                                 REQUEST_TIMEOUT_MS,
                                                 NvLogLevel::NVLL_ERROR);
     verifyResponseStatus(windowsXml);
 
     QXmlStreamReader xmlReader(windowsXml);
     QVector<NvHostWindow> windows;
+    if (onScreen != nullptr) {
+        *onScreen = false;
+    }
     while (!xmlReader.atEnd()) {
         while (xmlReader.readNextStartElement()) {
             auto name = xmlReader.name();
             if (name == QString("Window")) {
                 windows.append(NvHostWindow());
+            }
+            else if (name == QString("ScreenWidth") && onScreen != nullptr) {
+                *onScreen = true;
+                xmlReader.skipCurrentElement();
             }
             else if (windows.isEmpty()) {
                 continue;
@@ -507,6 +518,16 @@ NvHTTP::raiseWindow(quint64 id)
     openConnectionToString(m_BaseUrlHttps,
                            "actions/window",
                            "op=raise&id=" + QString::number(id),
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
+void
+NvHTTP::stopCoherence()
+{
+    openConnectionToString(m_BaseUrlHttps,
+                           "actions/coherence",
+                           "op=stop",
                            REQUEST_TIMEOUT_MS,
                            NvLogLevel::NVLL_ERROR);
 }

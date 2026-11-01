@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QLocalServer>
 #include <QObject>
+#include <QRect>
 #include <QSet>
 #include <QTimer>
 #include <QVector>
@@ -54,7 +55,7 @@ signals:
 
 private:
     void poll();
-    void handleWindows(const QString& hostUuid, const QVector<NvHostWindow>& windows);
+    void handleWindows(const QString& hostUuid, QVector<NvHostWindow> windows, bool onScreen);
     void handleError(const QString& hostUuid, const QString& detail);
     void handleStreamEnded(const QString& streamId);
     void handleStreamEvent(const QString& streamId, const QString& event, const QString& detail);
@@ -71,10 +72,14 @@ private:
     QString m_HostUuid;
     NvComputer* m_Computer = nullptr;
     bool m_Polling = false;
+    bool m_Found = false;
     bool m_Reached = false;
     int m_FailedPolls = 0;
     QDeadlineTimer m_ReachDeadline;
     QString m_PendingApp;
+    // The free area of the screen the windows are mirrored on (no menu bar, no Dock): the host
+    // gathers its windows on a screen of this size, and their positions are relative to it
+    QRect m_ScreenArea;
 
     // A host window's stream, with the window as it was last seen
     struct WindowStream

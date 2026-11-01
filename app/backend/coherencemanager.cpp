@@ -5,8 +5,10 @@
 #include "streamprocessmanager.h"
 #include "settings/streamingpreferences.h"
 
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QScreen>
 #include <QLocalSocket>
 #include <QReadLocker>
 #include <QThreadPool>
@@ -14,7 +16,11 @@
 // How often the host's window list is read while coherence mode runs
 #define POLL_INTERVAL_MS 2000
 
-// How long a host that was just woken or not yet found may take to answer the first time
+// How long a host may take to be found at all: a saved address from another network is no
+// address, and mDNS took a minute to find Heimdall at home on 2026-10-31
+#define FIND_GRACE_MS 120000
+
+// How long a found host that was just woken may take to answer the first time
 #define REACH_GRACE_MS 30000
 
 
@@ -103,9 +109,10 @@ void CoherenceManager::start(const QString& hostUuid)
 
     if (m_Computer != nullptr) {
         m_HostUuid = hostUuid;
+        m_Found = false;
         m_Reached = false;
         m_FailedPolls = 0;
-        m_ReachDeadline.setRemainingTime(REACH_GRACE_MS);
+        m_ReachDeadline.setRemainingTime(FIND_GRACE_MS);
         emit hostUuidChanged();
         m_Timer.start();
         poll();
@@ -125,6 +132,9 @@ void CoherenceManager::stop()
     m_ListedWindows.clear();
     m_DismissedWindows.clear();
     m_PendingApp.clear();
+    if (m_Reached) {
+        requestHost("end coherence mode", [](NvHTTP& http) { http.stopCoherence(); });
+    }
     m_Computer = nullptr;
     if (!m_HostUuid.isEmpty()) {
         m_HostUuid.clear();
@@ -177,27 +187,56 @@ void CoherenceManager::poll()
 {
     // One request at a time: a slow host must not pile them up
     if (!m_Polling && m_Computer != nullptr) {
-        m_Polling = true;
-        QThreadPool::globalInstance()->start([this, computer = m_Computer, hostUuid = m_HostUuid]() {
-            try {
-                NvHTTP http(computer);
-                const QVector<NvHostWindow> windows = http.getWindows();
-                QMetaObject::invokeMethod(this, [this, hostUuid, windows]() { handleWindows(hostUuid, windows); },
-                                          Qt::QueuedConnection);
-            } catch (const GfeHttpResponseException& e) {
-                QMetaObject::invokeMethod(this, [this, hostUuid, detail = e.toQString()]() { handleError(hostUuid, detail); },
-                                          Qt::QueuedConnection);
-            } catch (const QtNetworkReplyException& e) {
-                QMetaObject::invokeMethod(this, [this, hostUuid, detail = e.toQString()]() { handleError(hostUuid, detail); },
-                                          Qt::QueuedConnection);
+        const bool hasAddress = [this]() {
+            QReadLocker lock(&m_Computer->lock);
+            return !m_Computer->activeAddress.isNull();
+        }();
+        if (!hasAddress) {
+            if (!m_Reached && m_ReachDeadline.hasExpired()) {
+                const QString name = hostName();
+                qWarning() << "Expected to find" << name << "on the network for coherence mode, it was not";
+                stop();
+                emit failed(name, tr("The host was not found on the network."));
             }
-        });
+        }
+        else {
+            if (!m_Found) {
+                m_Found = true;
+                m_ReachDeadline.setRemainingTime(REACH_GRACE_MS);
+            }
+            m_Polling = true;
+            m_ScreenArea = QGuiApplication::primaryScreen()->availableGeometry();
+            QThreadPool::globalInstance()->start([this, computer = m_Computer, hostUuid = m_HostUuid, screenSize = m_ScreenArea.size()]() {
+                try {
+                    NvHTTP http(computer);
+                    bool onScreen = false;
+                    const QVector<NvHostWindow> windows = http.getWindows(screenSize, &onScreen);
+                    QMetaObject::invokeMethod(this, [this, hostUuid, windows, onScreen]() { handleWindows(hostUuid, windows, onScreen); },
+                                              Qt::QueuedConnection);
+                } catch (const GfeHttpResponseException& e) {
+                    QMetaObject::invokeMethod(this, [this, hostUuid, detail = e.toQString()]() { handleError(hostUuid, detail); },
+                                              Qt::QueuedConnection);
+                } catch (const QtNetworkReplyException& e) {
+                    QMetaObject::invokeMethod(this, [this, hostUuid, detail = e.toQString()]() { handleError(hostUuid, detail); },
+                                              Qt::QueuedConnection);
+                }
+            });
+        }
     }
 }
 
-void CoherenceManager::handleWindows(const QString& hostUuid, const QVector<NvHostWindow>& windows)
+void CoherenceManager::handleWindows(const QString& hostUuid, QVector<NvHostWindow> windows, bool onScreen)
 {
     m_Polling = false;
+
+    // Gathered on the host's coherence screen, a window sits where it sits on that screen, one
+    // host pixel per point of our free area; a host without one reports its desktop positions
+    if (onScreen) {
+        for (NvHostWindow& window : windows) {
+            window.x += m_ScreenArea.x();
+            window.y += m_ScreenArea.y();
+        }
+    }
 
     // A reply from before a stop or a switch to another host
     if (hostUuid == m_HostUuid) {
