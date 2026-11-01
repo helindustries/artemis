@@ -228,16 +228,21 @@ void Session::trackCommandTap(const SDL_KeyboardEvent& event)
     }
     else if (event.type == SDL_KEYUP && command && m_CommandTapPending) {
         m_CommandTapPending = false;
-        QThreadPool::globalInstance()->start([computer = m_Computer]() {
-            try {
-                NvHTTP(computer).openCoherenceStartMenu();
-            } catch (const GfeHttpResponseException& e) {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected the host's Start menu to open, but: %s", qPrintable(e.toQString()));
-            } catch (const QtNetworkReplyException& e) {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected the host's Start menu to open, but: %s", qPrintable(e.toQString()));
-            }
-        });
+        openHostStartMenu();
     }
+}
+
+void Session::openHostStartMenu()
+{
+    QThreadPool::globalInstance()->start([computer = m_Computer]() {
+        try {
+            NvHTTP(computer).openCoherenceStartMenu();
+        } catch (const GfeHttpResponseException& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected the host's Start menu to open, but: %s", qPrintable(e.toQString()));
+        } catch (const QtNetworkReplyException& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected the host's Start menu to open, but: %s", qPrintable(e.toQString()));
+        }
+    });
 }
 
 void Session::handleAtlasWindowEvent(const SDL_WindowEvent& event)
@@ -261,7 +266,9 @@ void Session::handleAtlasWindowEvent(const SDL_WindowEvent& event)
         break;
     case SDL_WINDOWEVENT_FOCUS_GAINED:
     case SDL_WINDOWEVENT_RESTORED:
-        raiseAtlasWindow(event.windowID);
+        if (!m_CoherenceAtlas->finishRaise()) {
+            raiseAtlasWindow(event.windowID);
+        }
         break;
     case SDL_WINDOWEVENT_LEAVE:
         m_InputHandler->notifyMouseLeave();
@@ -2525,8 +2532,27 @@ void Session::execInternal()
                 break;
             case SDL_CODE_DOCK_RAISE: {
                 auto* program = static_cast<QString*>(event.user.data1);
-                if (m_CoherenceAtlas != nullptr) {
+                // Start's keys go to the host through these windows, not the Dock icon
+                if (*program == COHERENCE_DOCK_START) {
+                    openHostStartMenu();
+                    MacProcess::activate();
+                }
+                else if (m_CoherenceAtlas != nullptr) {
                     m_CoherenceAtlas->raiseProgram(*program);
+                }
+                delete program;
+                break;
+            }
+            // Quitting Start ends coherence mode, as the stream ending does
+            case SDL_CODE_DOCK_QUIT: {
+                auto* program = static_cast<QString*>(event.user.data1);
+                if (*program == COHERENCE_DOCK_START) {
+                    SDL_Event quit = {};
+                    quit.type = SDL_QUIT;
+                    SDL_PushEvent(&quit);
+                }
+                else if (m_CoherenceAtlas != nullptr) {
+                    m_CoherenceAtlas->closeProgram(*program);
                 }
                 delete program;
                 break;

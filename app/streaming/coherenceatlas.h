@@ -50,6 +50,14 @@ public:
     // minimized ones restored
     void raiseProgram(const QString& program);
 
+    // Main thread, on a window of ours taking focus: AppKit finishes activating Artemis after
+    // raiseProgram() and brings back the window that was key before. True when that happened
+    // and the program's windows went to the front again, so the host keeps them in front too
+    bool finishRaise();
+
+    // A program's Dock icon was quit: its host windows are asked to close
+    void closeProgram(const QString& program);
+
     // The host's front-most window as last listed, or as last raised from here since
     quint64 frontWindow() const { return m_FrontWindow; }
     void setFrontWindow(quint64 id) { m_FrontWindow = id; }
@@ -90,6 +98,9 @@ private:
     // The host's windows as last listed, front-most first; minimized ones may have no window here
     QVector<NvHostWindow> m_Listed;
     quint64 m_FrontWindow = 0;
+    // The windows raiseProgram() brought forward, back to front, until activation is done
+    QVector<quint64> m_PendingRaise;
+    Uint32 m_PendingRaiseDeadline = 0;
 
     // Host window frames to send, relative to the coherence area, newest per window
     std::mutex m_FrameLock;

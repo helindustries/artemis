@@ -319,6 +319,7 @@ private:
     void handleAtlasWindowEvent(const SDL_WindowEvent& event);
     void raiseAtlasWindow(Uint32 sdlWindowId);
     void trackCommandTap(const SDL_KeyboardEvent& event);
+    void openHostStartMenu();
     bool m_CommandTapPending = false;
     std::atomic<bool> m_AtlasPolling {false};
     std::thread m_AtlasPoller;

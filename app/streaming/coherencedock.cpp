@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QImage>
+#include <QPainter>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -20,9 +21,32 @@
 // The dock tile app inside Artemis.app, which each program's tile is a copy of
 #define DOCK_TILE_EXECUTABLE "ArtemisDockTile"
 
+// About 2 points at a 64 point Dock (Paul, 2026-11-01)
+#define DOCK_ICON_MARGIN_PERCENT 3
+
+// The host's program icons come this large
+#define DOCK_ICON_SIZE 256
+
 static QString bundleSafe(const QString& text)
 {
     return QString(text).replace(QRegularExpression("[^A-Za-z0-9.-]"), "-");
+}
+
+// Windows 11's Start logo: four squares in its blue, the margin as on the program icons
+static QImage startIcon()
+{
+    QImage icon(DOCK_ICON_SIZE, DOCK_ICON_SIZE, QImage::Format_ARGB32_Premultiplied);
+    icon.fill(Qt::transparent);
+    QPainter painter(&icon);
+    const int margin = DOCK_ICON_SIZE * (DOCK_ICON_MARGIN_PERCENT + 12) / 100;
+    const int gap = DOCK_ICON_SIZE / 32;
+    const int square = (DOCK_ICON_SIZE - 2 * margin - gap) / 2;
+    for (const int row : { 0, 1 }) {
+        for (const int column : { 0, 1 }) {
+            painter.fillRect(margin + column * (square + gap), margin + row * (square + gap), square, square, QColor(0x00, 0x78, 0xd4));
+        }
+    }
+    return icon;
 }
 
 CoherenceDock::CoherenceDock(NvComputer* computer, const QString& hostName)
@@ -80,7 +104,7 @@ CoherenceDock::~CoherenceDock()
 
 void CoherenceDock::update(const QVector<NvHostWindow>& windows)
 {
-    QHash<QString, quint64> programs;
+    QHash<QString, quint64> programs { { COHERENCE_DOCK_START, 0 } };
     for (const NvHostWindow& window : windows) {
         if (!window.popup && !window.process.isEmpty() && !programs.contains(window.process)) {
             programs.insert(window.process, window.id);
@@ -114,21 +138,29 @@ void CoherenceDock::startTile(const QString& program, quint64 windowId)
 {
     // The icon takes seconds while the host's shell warms up; the tile is made meanwhile
     QImage icon;
-    try {
-        icon = NvHTTP(m_Computer).getWindowIcon(windowId);
-    } catch (const GfeHttpResponseException& e) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No icon for host program %s: %s", qPrintable(program), qPrintable(e.toQString()));
-    } catch (const QtNetworkReplyException& e) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No icon for host program %s: %s", qPrintable(program), qPrintable(e.toQString()));
+    QString name;
+    if (program == COHERENCE_DOCK_START) {
+        icon = startIcon();
+        name = "Start";
     }
-
-    QString name = QFileInfo(program).completeBaseName();
-    if (!name.isEmpty()) {
-        name[0] = name[0].toUpper();
+    else {
+        try {
+            icon = NvHTTP(m_Computer).getWindowIcon(windowId);
+        } catch (const GfeHttpResponseException& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No icon for host program %s: %s", qPrintable(program), qPrintable(e.toQString()));
+        } catch (const QtNetworkReplyException& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "No icon for host program %s: %s", qPrintable(program), qPrintable(e.toQString()));
+        }
+        name = QFileInfo(program).completeBaseName();
+        if (!name.isEmpty()) {
+            name[0] = name[0].toUpper();
+        }
     }
     const QString bundle = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
                                .filePath(QString("DockTiles/%1/%2.app").arg(bundleSafe(m_HostName), bundleSafe(name)));
+    // Made anew each time: LaunchServices keeps showing the icon a bundle at that path had
     const QString contents = bundle + "/Contents";
+    QDir(bundle).removeRecursively();
     QDir().mkpath(contents + "/MacOS");
     QDir().mkpath(contents + "/Resources");
 
@@ -152,8 +184,16 @@ void CoherenceDock::startTile(const QString& program, quint64 windowId)
                              .arg(bundleSafe(m_HostName), bundleSafe(name), name.toHtmlEscaped(), program.toHtmlEscaped(), m_SocketPath.toHtmlEscaped())
                              .toUtf8()) > 0;
     plist.close();
+    // Windows icons fill their canvas to the edge, and look pressed into the Dock without a margin
     if (!icon.isNull()) {
-        icon.save(contents + "/Resources/icon.icns", "icns");
+        QImage padded(icon.size(), QImage::Format_ARGB32_Premultiplied);
+        padded.fill(Qt::transparent);
+        QPainter painter(&padded);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        const int margin = icon.width() * DOCK_ICON_MARGIN_PERCENT / 100;
+        painter.drawImage(QRect(margin, margin, icon.width() - 2 * margin, icon.height() - 2 * margin), icon);
+        painter.end();
+        padded.save(contents + "/Resources/icon.icns", "icns");
     }
 
     // -g: in the background, the program's windows keep the focus
@@ -222,10 +262,10 @@ void CoherenceDock::serve()
                                 close(connection);
                             }
                         }
-                        else if (command == "raise") {
+                        else if (command == "raise" || command == "quit") {
                             SDL_Event event = {};
                             event.type = SDL_USEREVENT;
-                            event.user.code = SDL_CODE_DOCK_RAISE;
+                            event.user.code = command == "raise" ? SDL_CODE_DOCK_RAISE : SDL_CODE_DOCK_QUIT;
                             event.user.data1 = new QString(program);
                             if (SDL_PushEvent(&event) != 1) {
                                 delete static_cast<QString*>(event.user.data1);

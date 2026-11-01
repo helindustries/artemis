@@ -624,9 +624,9 @@ ApplicationWindow {
     }
 
     // In coherence mode the host's windows are the only Artemis windows in sight; this entry
-    // reaches the host's start menu and ends the mode
+    // reaches the host's start menu and ends the mode. On macOS the Start icon in the Dock does
     Platform.SystemTrayIcon {
-        visible: CoherenceManager.hostUuid !== ""
+        visible: CoherenceManager.hostUuid !== "" && Qt.platform.os !== "osx"
         icon.source: "qrc:/res/artemis.svg"
         icon.mask: true
         tooltip: qsTr("Artemis: %1 in coherence mode").arg(CoherenceManager.hostName)

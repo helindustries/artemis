@@ -240,6 +240,10 @@ public:
     void
     openCoherenceStartMenu();
 
+    // Coherence mode: asks a host window to close, as its close button does
+    void
+    closeWindow(quint64 id);
+
     // With a position (relative to the host's coherence screen), the window moves there too,
     // as a resize by its left or top edge does
     void

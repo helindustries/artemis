@@ -611,6 +611,16 @@ NvHTTP::stopCoherence()
 }
 
 void
+NvHTTP::closeWindow(quint64 id)
+{
+    openConnectionToString(m_BaseUrlHttps,
+                           "actions/window",
+                           QString("op=close&id=%1").arg(id),
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
+void
 NvHTTP::openCoherenceStartMenu()
 {
     openConnectionToString(m_BaseUrlHttps,

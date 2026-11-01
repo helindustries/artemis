@@ -11,6 +11,9 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 
+// How long after a Dock icon's raise AppKit may still finish activating Artemis
+#define PENDING_RAISE_MS 1000
+
 QMutex CoherenceAtlas::s_TargetLock;
 QVector<CoherenceAtlas::Target> CoherenceAtlas::s_Targets;
 bool CoherenceAtlas::s_Active = false;
@@ -201,16 +204,54 @@ void CoherenceAtlas::raiseProgram(const QString& program)
             } catch (const QtNetworkReplyException& e) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected host window %llu to come to the front, but: %s", host->id, qPrintable(e.toQString()));
             }
-            if (const auto shown = m_Shown.constFind(host->id); shown != m_Shown.cend()) {
+        }
+    }
+
+    if (!raised.isEmpty()) {
+        m_FrontWindow = raised.last();
+        m_PendingRaise = raised;
+        m_PendingRaiseDeadline = SDL_GetTicks() + PENDING_RAISE_MS;
+        MacProcess::activate();
+        for (const quint64 id : raised) {
+            if (const auto shown = m_Shown.constFind(id); shown != m_Shown.cend()) {
                 SDL_ShowWindow(shown->window);
                 SDL_RaiseWindow(shown->window);
             }
         }
     }
-    if (!raised.isEmpty()) {
-        m_FrontWindow = raised.last();
-        MacProcess::activate();
+}
+
+void CoherenceAtlas::closeProgram(const QString& program)
+{
+    for (const NvHostWindow& host : m_Listed) {
+        if (host.process == program && !host.popup) {
+            try {
+                NvHTTP(m_Computer).closeWindow(host.id);
+            } catch (const GfeHttpResponseException& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected host window %llu to close, but: %s", host.id, qPrintable(e.toQString()));
+            } catch (const QtNetworkReplyException& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected host window %llu to close, but: %s", host.id, qPrintable(e.toQString()));
+            }
+        }
     }
+}
+
+bool CoherenceAtlas::finishRaise()
+{
+    const bool pending = !m_PendingRaise.isEmpty() && !SDL_TICKS_PASSED(SDL_GetTicks(), m_PendingRaiseDeadline);
+    if (pending) {
+        const QVector<quint64> raised = m_PendingRaise;
+        m_PendingRaise.clear();
+        for (const quint64 id : raised) {
+            if (const auto shown = m_Shown.constFind(id); shown != m_Shown.cend()) {
+                SDL_RaiseWindow(shown->window);
+            }
+        }
+    }
+    else {
+        m_PendingRaise.clear();
+    }
+    return pending;
 }
 
 bool CoherenceAtlas::hasPopups() const

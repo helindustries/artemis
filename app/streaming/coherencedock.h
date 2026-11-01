@@ -14,14 +14,17 @@
 
 class NvComputer;
 
-// SDL_USEREVENT code of a Dock icon activated: data1 is the program's name, a QString* for the
-// main thread to delete
+// SDL_USEREVENT codes of a Dock icon activated or quit: data1 is the program's name, a QString*
+// for the main thread to delete; COHERENCE_DOCK_START names the Start icon
 #define SDL_CODE_DOCK_RAISE 111
+#define SDL_CODE_DOCK_QUIT 112
+#define COHERENCE_DOCK_START ":start"
 
 // Coherence mode's Dock icons (macOS): one per host program with windows, with the program's
-// icon and name, each a copy of Artemis's dock tile app (coherencedocktile.m). A tile connects to
-// this stream process over a Unix socket, asks for its program's windows when activated, and
-// quits when its connection closes: the program has no windows left, or the stream ends.
+// icon and name, and one for the host's Start menu, each a copy of Artemis's dock tile app
+// (coherencedocktile.m). A tile connects to this stream process over a Unix socket, asks for its
+// program's windows when activated, passes on Quit, and quits when its connection closes: the
+// program has no windows left, or the stream ends.
 class CoherenceDock
 {
 public:
