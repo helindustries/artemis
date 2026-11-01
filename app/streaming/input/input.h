@@ -142,6 +142,9 @@ public:
 
     bool isSystemKeyCaptureActive();
 
+    // Whether the Command/Windows key and its combinations go to the host
+    bool forwardsCommandKey();
+
     void setCaptureActive(bool active);
 
     bool isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth = -1, int windowHeight = -1);
@@ -221,6 +224,7 @@ private:
     QString m_OldIgnoreDevicesExcept;
     QStringList m_IgnoreDeviceGuids;
     StreamingPreferences::CaptureSysKeysMode m_CaptureSystemKeysMode;
+    bool m_CoherenceWindow;
     int m_MouseCursorCapturedVisibilityState;
 
     struct {

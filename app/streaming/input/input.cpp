@@ -21,6 +21,7 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_PointerRegionLockToggledByUser(false),
       m_FakeCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
+      m_CoherenceWindow(prefs.windowId != 0),
       // Coherence mode streams a host window without the host's pointer: ours is the pointer
       m_MouseCursorCapturedVisibilityState(prefs.windowId != 0 ? SDL_ENABLE : SDL_DISABLE),
       m_LongPressTimer(0),
@@ -373,6 +374,14 @@ bool SdlInputHandler::isSystemKeyCaptureActive()
     }
 
     return true;
+}
+
+bool SdlInputHandler::forwardsCommandKey()
+{
+    // A coherence window stands for a host window, so Command shortcuts belong to it (the host's
+    // key mapping turns Win into Ctrl) without grabbing the keyboard: Cmd+Tab and the other
+    // system shortcuts stay macOS's, they never reach the window
+    return m_CoherenceWindow || isSystemKeyCaptureActive();
 }
 
 void SdlInputHandler::setCaptureActive(bool active)

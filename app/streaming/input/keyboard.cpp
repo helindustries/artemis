@@ -224,7 +224,7 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         modifiers |= MODIFIER_SHIFT;
     }
     if (event->keysym.mod & KMOD_GUI) {
-        if (isSystemKeyCaptureActive()) {
+        if (forwardsCommandKey()) {
             modifiers |= MODIFIER_META;
         }
     }
@@ -369,13 +369,13 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
                 keyCode = 0xA5;
                 break;
             case SDL_SCANCODE_LGUI:
-                if (!isSystemKeyCaptureActive()) {
+                if (!forwardsCommandKey()) {
                     return;
                 }
                 keyCode = 0x5B;
                 break;
             case SDL_SCANCODE_RGUI:
-                if (!isSystemKeyCaptureActive()) {
+                if (!forwardsCommandKey()) {
                     return;
                 }
                 keyCode = 0x5C;
