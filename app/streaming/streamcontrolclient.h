@@ -29,6 +29,10 @@ public:
     // the stream's state. Safe to call from any thread.
     void reportEvent(QString event, QString detail = QString());
 
+signals:
+    // The window's user agreed to quit the app the host runs, which this stream waits on
+    void quitAppRequested();
+
 private slots:
     void connectToServer();
     void readCommands();
@@ -36,6 +40,7 @@ private slots:
 
 private:
     void handleCommand(const QJsonObject& message);
+    void endStream();
 
     QThread m_Thread;
     QLocalSocket* m_Socket;

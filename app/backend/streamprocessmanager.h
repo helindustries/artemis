@@ -39,7 +39,9 @@ public:
     Q_INVOKABLE QString start(const QString& hostUuid, const QString& hostName, const QString& appName,
                               const QVariantMap& profile);
     Q_INVOKABLE void stop(int row);
-    void stopStream(const QString& id);
+    Q_INVOKABLE void stopStream(const QString& id);
+    // A stream waiting on the host's running app (state "waiting") quits it and starts
+    Q_INVOKABLE void quitHostApp(const QString& id);
     // Stops the streams of one host started with this profile (StreamProfiles::idOf); returns
     // how many it stopped, so a caller can fall back to quitting the host's app
     Q_INVOKABLE int stopProfile(const QString& hostUuid, const QString& profileId);
@@ -58,6 +60,9 @@ signals:
     void streamFailed(QString hostName, QString appName, QString detail);
     // The stream's process ended, however it ended; id is what start() returned
     void streamEnded(QString id);
+    // A stream started or reported a new state: starting, connecting (detail: the step),
+    // waiting (detail: the host's running app, to be quit first), streaming, failed, ended
+    void streamStateChanged(QString id, QString hostName, QString appName, QString state, QString detail);
     // Something the user did to the stream's window (coherence mode: resized, restored)
     void streamEvent(QString id, QString event, QString detail);
 
@@ -74,8 +79,12 @@ private:
         QString detail;
         QProcess* process;
         QLocalSocket* socket;
+        // Coherence mode's window streams start by the dozen and report no progress
+        bool reportsProgress;
     };
 
+    // The row of the stream already running this app on this profile, -1 if none
+    int runningRow(const QString& hostUuid, const QString& appName, const QVariantMap& profile) const;
     void handleNewConnection();
     void handleSocketData(QLocalSocket* socket);
     void handleProcessFinished(QProcess* process);

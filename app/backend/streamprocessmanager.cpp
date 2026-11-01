@@ -44,6 +44,13 @@ StreamProcessManager::~StreamProcessManager()
 QString StreamProcessManager::start(const QString& hostUuid, const QString& hostName, const QString& appName,
                                     const QVariantMap& profile)
 {
+    // An app streams once per profile: starting it again, as its tile's play button does while it
+    // runs, brings its window to the front instead of a second stream of the same screen
+    if (const int running = runningRow(hostUuid, appName, profile); running >= 0) {
+        raise(running);
+        return m_Streams[running].id;
+    }
+
     Stream stream;
     stream.id = QString::number(m_NextId++);
     stream.hostUuid = hostUuid;
@@ -53,6 +60,7 @@ QString StreamProcessManager::start(const QString& hostUuid, const QString& host
     stream.profileName = profile.value("name").toString();
     stream.state = "starting";
     stream.socket = nullptr;
+    stream.reportsProgress = profile.value("windowId").toULongLong() == 0;
     stream.process = new QProcess(this);
 
     QStringList arguments = { "stream", hostUuid.isEmpty() ? hostName : hostUuid, appName,
@@ -113,7 +121,32 @@ QString StreamProcessManager::start(const QString& hostUuid, const QString& host
     emit countChanged();
 
     stream.process->start(QCoreApplication::applicationFilePath(), arguments);
+    if (stream.reportsProgress) {
+        emit streamStateChanged(stream.id, stream.hostName, stream.appName, stream.state, QString());
+    }
     return stream.id;
+}
+
+void StreamProcessManager::quitHostApp(const QString& id)
+{
+    if (const int row = rowForId(id); row >= 0) {
+        sendCommand(row, "quitapp");
+    }
+}
+
+int StreamProcessManager::runningRow(const QString& hostUuid, const QString& appName, const QVariantMap& profile) const
+{
+    // Coherence mode's window and atlas streams are several of one app by design
+    int found = -1;
+    if (profile.value("windowId").toULongLong() == 0 && !profile.value("coherenceAtlas").toBool()) {
+        const QString profileId = StreamProfiles::idOf(profile);
+        for (int row = 0; row < m_Streams.size() && found < 0; row++) {
+            if (m_Streams[row].hostUuid == hostUuid && m_Streams[row].appName == appName && m_Streams[row].profileId == profileId) {
+                found = row;
+            }
+        }
+    }
+    return found;
 }
 
 void StreamProcessManager::stopStream(const QString& id)
@@ -215,6 +248,9 @@ void StreamProcessManager::handleSocketData(QLocalSocket* socket)
             stream.state = message["state"].toString();
             stream.detail = message["detail"].toString();
             emit dataChanged(index(row), index(row), { StateRole, DetailRole });
+            if (stream.reportsProgress) {
+                emit streamStateChanged(stream.id, stream.hostName, stream.appName, stream.state, stream.detail);
+            }
         }
         else {
             qWarning() << "Stream control message for unknown stream" << message["id"].toString();

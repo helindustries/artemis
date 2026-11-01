@@ -65,9 +65,10 @@ void StreamControlClient::connectToServer()
     m_Socket = new QLocalSocket(this);
     connect(m_Socket, &QLocalSocket::readyRead, this, &StreamControlClient::readCommands);
     connect(m_Socket, &QLocalSocket::disconnected, this, [this]() {
-        // The controlling window went away. The stream carries on, it just has
-        // nobody left to report to.
-        qInfo() << "Stream control socket" << m_ServerName << "disconnected";
+        // The Artemis window that started this stream is gone, crashed or killed: the stream goes
+        // with it, as it has no Dock icon or menu to be found and ended by
+        qInfo() << "Stream control socket" << m_ServerName << "disconnected, ending the stream";
+        endStream();
     });
 
     m_Socket->connectToServer(m_ServerName);
@@ -104,18 +105,26 @@ void StreamControlClient::readCommands()
     }
 }
 
+void StreamControlClient::endStream()
+{
+    // SDL_QUIT ends a running session exactly as the disconnect key combo does.
+    // Before or after a session there is no SDL loop to see it, so the Qt quit
+    // covers those phases; while streaming it waits until the session returns.
+    SDL_Event event;
+    event.type = SDL_QUIT;
+    event.quit.timestamp = SDL_GetTicks();
+    SDL_PushEvent(&event);
+    QMetaObject::invokeMethod(QCoreApplication::instance(), "quit", Qt::QueuedConnection);
+}
+
 void StreamControlClient::handleCommand(const QJsonObject& message)
 {
     const QString command = message["command"].toString();
     if (command == "stop") {
-        // SDL_QUIT ends a running session exactly as the disconnect key combo does.
-        // Before or after a session there is no SDL loop to see it, so the Qt quit
-        // covers those phases; while streaming it waits until the session returns.
-        SDL_Event event;
-        event.type = SDL_QUIT;
-        event.quit.timestamp = SDL_GetTicks();
-        SDL_PushEvent(&event);
-        QMetaObject::invokeMethod(QCoreApplication::instance(), "quit", Qt::QueuedConnection);
+        endStream();
+    }
+    else if (command == "quitapp") {
+        emit quitAppRequested();
     }
     else if (command == "raise" || command == "minimize" || command == "restore" || command == "move") {
         SDL_Event event = {};

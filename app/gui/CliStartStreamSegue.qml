@@ -22,15 +22,21 @@ Item {
         stackView.push(segue)
     }
 
+    // A hidden stream has reported the error, and the Artemis window asks whether to quit the
+    // running app, answering over the control socket
     function onLaunchFailed(message) {
-        errorDialog.text = message
-        errorDialog.open()
         console.error(message)
+        if (!hiddenStream) {
+            errorDialog.text = message
+            errorDialog.open()
+        }
     }
 
     function onAppQuitRequired(appName) {
-        quitAppDialog.appName = appName
-        quitAppDialog.open()
+        if (!hiddenStream) {
+            quitAppDialog.appName = appName
+            quitAppDialog.open()
+        }
     }
 
     StackView.onActivated: {

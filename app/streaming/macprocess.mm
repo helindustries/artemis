@@ -9,11 +9,9 @@
 static const CGFloat HOST_WINDOW_OUTLINE = 2;
 static const CGFloat HOST_WINDOW_CORNER_RADIUS = 11;
 
-void MacProcess::hideFromDock()
+void MacProcess::showInDock()
 {
-    // An accessory app still shows windows and takes focus, it just has no Dock icon
-    // or menu bar of its own
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 }
 
 void MacProcess::activate()

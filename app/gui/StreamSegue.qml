@@ -67,7 +67,7 @@ Item {
         stackView.replace(stackView.currentItem, component.createObject(stackView, {"appName": appName}), StackView.Immediate)
 
         // Show the Qt window again to show quit segue
-        window.visible = true
+        window.visible = !hiddenStream
     }
 
     function sessionFinished(portTestResult)
@@ -80,7 +80,8 @@ Item {
         SdlGamepadKeyNavigation.enable()
 
         if (quitAfter) {
-            if (streamSegueErrorDialog.text) {
+            // A hidden stream has reported its error to the Artemis window that started it
+            if (streamSegueErrorDialog.text && !hiddenStream) {
                 // Quit when the error dialog is acknowledged
                 streamSegueErrorDialog.quitAfter = quitAfter
                 streamSegueErrorDialog.open()

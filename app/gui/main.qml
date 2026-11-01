@@ -50,8 +50,11 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
-        // Show the window according to the user's preferences
-        if (SystemProperties.hasDesktopEnvironment) {
+        // Show the window according to the user's preferences. A stream the Artemis window
+        // started shows none: that window shows its progress, questions and errors
+        if (hiddenStream) {
+        }
+        else if (SystemProperties.hasDesktopEnvironment) {
             if (StreamingPreferences.uiDisplayMode == StreamingPreferences.UI_MAXIMIZED) {
                 window.showMaximized()
             }
@@ -626,11 +629,77 @@ ApplicationWindow {
         id: streamFailedDialog
     }
 
+    // A stream this window started shows nothing of its own until its stream window: its
+    // progress shows here, and so does the question whether to quit the app the host runs.
+    // Cancel or No end the stream; Yes has it quit that app and go on
+    NavigableDialog {
+        id: streamProgressDialog
+        property string streamId: ""
+        property string runningApp: ""
+        property alias text: streamProgressLabel.text
+
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        standardButtons: runningApp ? Dialog.Yes | Dialog.No : Dialog.Cancel
+
+        Row {
+            spacing: 10
+
+            BusyIndicator {
+                visible: !streamProgressDialog.runningApp
+                running: visible && streamProgressDialog.visible
+            }
+
+            Label {
+                id: streamProgressLabel
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.min(implicitWidth, window.width * 0.6)
+                wrapMode: Text.Wrap
+                font.pointSize: 14
+            }
+        }
+
+        onAccepted: StreamProcessManager.quitHostApp(streamId)
+        onRejected: StreamProcessManager.stopStream(streamId)
+    }
+
     Connections {
         target: StreamProcessManager
         function onStreamFailed(hostName, appName, detail) {
             streamFailedDialog.text = qsTr("%1 on %2 ended:").arg(appName).arg(hostName) + "\n\n" + detail
             streamFailedDialog.open()
+        }
+        function onStreamStateChanged(id, hostName, appName, state, detail) {
+            if (state === "starting" || state === "connecting") {
+                streamProgressDialog.streamId = id
+                streamProgressDialog.runningApp = ""
+                streamProgressDialog.text = qsTr("Starting %1 on %2").arg(appName).arg(hostName) +
+                        (detail ? "\n" + detail : "")
+                streamProgressDialog.open()
+            }
+            else if (state === "waiting") {
+                streamProgressDialog.streamId = id
+                streamProgressDialog.runningApp = detail
+                streamProgressDialog.text = qsTr("%1 is running on %2. Quit it to start %3? Any unsaved progress will be lost.")
+                        .arg(detail).arg(hostName).arg(appName)
+                streamProgressDialog.open()
+            }
+            else if (id === streamProgressDialog.streamId) {
+                streamProgressDialog.close()
+            }
+        }
+        function onStreamEnded(id) {
+            if (id === streamProgressDialog.streamId) {
+                streamProgressDialog.close()
+            }
+        }
+        function onStreamEvent(id, event, detail) {
+            if (event === "warning") {
+                var toast = Qt.createQmlObject('import QtQuick.Controls 2.2; ToolTip {}', window.contentItem, '')
+                toast.text = detail
+                toast.timeout = 3000
+                toast.visible = true
+            }
         }
     }
 

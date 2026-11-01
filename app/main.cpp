@@ -796,6 +796,8 @@ int main(int argc, char *argv[])
     QString coherenceHost;
     QString coherenceApp;
     bool hasGUI = true;
+    // A stream the Artemis window started, which stays out of the Dock
+    bool windowStream = false;
 
     switch (commandLineParserResult) {
     case GlobalCommandLineParser::NormalStartRequested:
@@ -814,18 +816,22 @@ int main(int argc, char *argv[])
             streamScreenName = streamParser.getScreen();
 
             if (!streamParser.getControlSocket().isEmpty()) {
-#ifdef Q_OS_DARWIN
-                MacProcess::hideFromDock();
-#endif
+                windowStream = true;
                 // Lives until the process exits; its thread must outlast the session
                 auto control = new StreamControlClient(streamParser.getControlSocket(),
                                                        streamParser.getStreamId());
+                // The window that started this stream shows its progress and asks its questions;
+                // this process shows nothing until the stream itself
                 QObject::connect(launcher, &CliStartStream::Launcher::searchingComputer, control,
-                                 [control]() { control->reportState("connecting"); });
+                                 [control]() { control->reportState("connecting", QObject::tr("Establishing connection to PC...")); });
+                QObject::connect(launcher, &CliStartStream::Launcher::searchingApp, control,
+                                 [control]() { control->reportState("connecting", QObject::tr("Loading app list...")); });
                 QObject::connect(launcher, &CliStartStream::Launcher::failed, control,
                                  [control](QString text) { control->reportFinalState("failed", text); });
                 QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, control,
                                  [control](QString runningApp) { control->reportState("waiting", runningApp); });
+                QObject::connect(control, &StreamControlClient::quitAppRequested, launcher,
+                                 [launcher]() { launcher->quitRunningApp(); });
                 // Connected on the launcher's thread so the session's signals are hooked up
                 // before QML receives the same signal and starts the session
                 QObject::connect(launcher, &CliStartStream::Launcher::sessionCreated, launcher,
@@ -833,6 +839,19 @@ int main(int argc, char *argv[])
                     // A launch error comes before sessionFinished: the stream then ends as
                     // failed, with the error, instead of showing it in a dialog of its own
                     auto error = std::make_shared<QString>();
+                    QObject::connect(session, &Session::stageStarting, control, [control](QString stage) {
+                        control->reportState("connecting", QObject::tr("Starting %1...").arg(stage));
+                    });
+                    QObject::connect(session, &Session::stageFailed, control,
+                                     [control, error](QString stage, int errorCode, QString failingPorts) {
+                        *error = QObject::tr("Starting %1 failed: Error %2").arg(stage).arg(errorCode);
+                        if (!failingPorts.isEmpty()) {
+                            *error += "\n\n" + QObject::tr("Check your firewall and port forwarding rules for port(s): %1").arg(failingPorts);
+                        }
+                        control->reportState("failed", *error);
+                    });
+                    QObject::connect(session, &Session::displayLaunchWarning, control,
+                                     [control](QString text) { control->reportEvent("warning", text); });
                     QObject::connect(session, &Session::connectionStarted, control,
                                      [control]() { control->reportState("streaming"); });
                     QObject::connect(session, &Session::windowResized, control, [control](int width, int height) {
@@ -907,7 +926,15 @@ int main(int argc, char *argv[])
     }
 
     if (hasGUI) {
+#ifdef Q_OS_DARWIN
+        if (!windowStream) {
+            MacProcess::showInDock();
+        }
+#endif
         engine.rootContext()->setContextProperty("initialView", initialView);
+        // The Qt window of a stream the Artemis window started stays hidden: that window shows
+        // its progress, questions and errors
+        engine.rootContext()->setContextProperty("hiddenStream", windowStream);
 
         // Load the main.qml file
         engine.load(QUrl(QStringLiteral("qrc:/gui/main.qml")));
