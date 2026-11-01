@@ -7,8 +7,9 @@ AppModel::AppModel(QObject *parent)
             this, &AppModel::handleBoxArtLoaded);
 }
 
-void AppModel::initialize(ComputerManager* computerManager, int computerIndex, bool showHiddenGames)
+void AppModel::initialize(ComputerManager* computerManager, int computerIndex, bool showHiddenGames, bool showCoherence)
 {
+    m_ShowCoherence = showCoherence;
     m_ComputerManager = computerManager;
     connect(m_ComputerManager, &ComputerManager::computerStateChanged,
             this, &AppModel::handleComputerStateChanged);
@@ -79,13 +80,35 @@ int AppModel::rowCount(const QModelIndex &parent) const
     if (parent.isValid())
         return 0;
 
-    return m_VisibleApps.count();
+    return m_VisibleApps.count() + (m_ShowCoherence ? 1 : 0);
 }
 
 QVariant AppModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid())
         return QVariant();
+
+    // The coherence mode tile: the view starts and stops it through CoherenceManager
+    if (index.row() == m_VisibleApps.count()) {
+        switch (role)
+        {
+        case NameRole:
+            return tr("Coherence Mode");
+        case BoxArtRole:
+            return QUrl("qrc:/res/coherence_mode.png");
+        case CoherenceRole:
+            return true;
+        case AppIdRole:
+            return 0;
+        case RunningRole:
+        case HiddenRole:
+        case DirectLaunchRole:
+        case AppCollectorGameRole:
+            return false;
+        default:
+            return QVariant();
+        }
+    }
 
     Q_ASSERT(index.row() < m_VisibleApps.count());
     NvApp app = m_VisibleApps.at(index.row());
@@ -107,6 +130,8 @@ QVariant AppModel::data(const QModelIndex &index, int role) const
         return app.directLaunch;
     case AppCollectorGameRole:
         return app.isAppCollectorGame;
+    case CoherenceRole:
+        return false;
     default:
         return QVariant();
     }
@@ -123,6 +148,7 @@ QHash<int, QByteArray> AppModel::roleNames() const
     names[AppIdRole] = "appid";
     names[DirectLaunchRole] = "directLaunch";
     names[AppCollectorGameRole] = "appCollectorGame";
+    names[CoherenceRole] = "coherence";
 
     return names;
 }

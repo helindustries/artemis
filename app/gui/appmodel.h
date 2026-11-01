@@ -23,13 +23,15 @@ class AppModel : public QAbstractListModel
         AppIdRole,
         DirectLaunchRole,
         AppCollectorGameRole,
+        CoherenceRole,
     };
 
 public:
     explicit AppModel(QObject *parent = nullptr);
 
-    // Must be called before any QAbstractListModel functions
-    Q_INVOKABLE void initialize(ComputerManager* computerManager, int computerIndex, bool showHiddenGames);
+    // Must be called before any QAbstractListModel functions. The coherence mode tile is the
+    // last row, after the host's apps, so the apps keep their indexes
+    Q_INVOKABLE void initialize(ComputerManager* computerManager, int computerIndex, bool showHiddenGames, bool showCoherence);
 
     Q_INVOKABLE Session* createSessionForApp(int appIndex);
 
@@ -78,6 +80,7 @@ private:
     QVector<NvApp> m_VisibleApps, m_AllApps;
     int m_CurrentGameId;
     bool m_ShowHiddenGames;
+    bool m_ShowCoherence = false;
     bool m_ReportsVirtualDisplayProfiles = false;
     QStringList m_VirtualDisplayProfiles;
 };

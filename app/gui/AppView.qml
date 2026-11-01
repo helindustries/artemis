@@ -3,6 +3,7 @@ import QtQuick.Controls 2.2
 import QtQuick.Controls.Material 2.2
 
 import AppModel 1.0
+import CoherenceManager 1.0
 import ComputerManager 1.0
 import SdlGamepadKeyNavigation 1.0
 import StreamProcessManager 1.0
@@ -72,8 +73,12 @@ ListView {
     function computerLost()
     {
         // Go back to the PC view on PC loss. main.qml's stackView id does not resolve in a
-        // handler the model's signal calls; the attached view does
-        profileRows.StackView.view.pop()
+        // handler the model's signal calls; the attached view does. A host making or removing
+        // coherence screens answers nothing else for seconds, which looks like a loss here;
+        // coherence mode reports a host really gone itself
+        if (CoherenceManager.hostUuid !== appModel.getComputerUuid()) {
+            profileRows.StackView.view.pop()
+        }
     }
 
     StackView.onActivated: {
@@ -110,7 +115,7 @@ ListView {
     function createModel()
     {
         var model = Qt.createQmlObject('import AppModel 1.0; AppModel {}', parent, '')
-        model.initialize(ComputerManager, computerIndex, showHiddenGames)
+        model.initialize(ComputerManager, computerIndex, showHiddenGames, true)
         return model
     }
 
@@ -148,7 +153,8 @@ ListView {
 
             onCountChanged: {
                 if (profileRow.rowIndex === 0) {
-                    profileRows.appCount = count
+                    // The coherence mode tile is no app of the host's
+                    profileRows.appCount = count - 1
                 }
             }
 
@@ -157,10 +163,17 @@ ListView {
                 width: 220; height: 287;
                 grid: appGrid
 
-                property bool running: model.running && profileRows.hasVirtualDisplay(profileRow.profile)
+                // Coherence mode runs for the host, whichever row's profile; its tile is the first
+                // row's alone, the last cell of the others stays empty
+                property bool running: model.coherence ?
+                                           CoherenceManager.hostUuid === appModel.getComputerUuid() :
+                                           model.running && profileRows.hasVirtualDisplay(profileRow.profile)
 
                 property alias appContextMenu: appContextMenuLoader.item
                 property alias appNameText: appNameTextLoader.item
+
+                visible: !model.coherence || profileRow.rowIndex === 0
+                enabled: visible
 
                 // Dim the app if it's hidden
                 opacity: model.hidden ? 0.4 : 1.0
@@ -214,7 +227,9 @@ ListView {
                     anchors.fill: appIcon
 
                     sourceComponent: Item {
+                        // Coherence mode has nothing to resume: its windows are already open
                         RoundButton {
+                            visible: !model.coherence
                             anchors.horizontalCenterOffset: appIcon.isPlaceholder ? -47 : 0
                             anchors.verticalCenterOffset: appIcon.isPlaceholder ? -75 : -60
                             anchors.centerIn: parent
@@ -244,7 +259,7 @@ ListView {
 
                         RoundButton {
                             anchors.horizontalCenterOffset: appIcon.isPlaceholder ? 47 : 0
-                            anchors.verticalCenterOffset: appIcon.isPlaceholder ? -75 : 60
+                            anchors.verticalCenterOffset: model.coherence ? 0 : appIcon.isPlaceholder ? -75 : 60
                             anchors.centerIn: parent
                             implicitWidth: 85
                             implicitHeight: 85
@@ -262,7 +277,7 @@ ListView {
                                 stopRowStreams()
                             }
 
-                            ToolTip.text: qsTr("Stop Stream")
+                            ToolTip.text: model.coherence ? qsTr("Stop Coherence Mode") : qsTr("Stop Stream")
                             ToolTip.delay: 1000
                             ToolTip.timeout: 3000
                             ToolTip.visible: hovered
@@ -303,7 +318,12 @@ ListView {
                 {
                     // When another app is running on the host, the stream process asks
                     // whether to quit it, so there is nothing to check here
-                    startStream(model.name, profileRow.profile)
+                    if (model.coherence) {
+                        CoherenceManager.start(appModel.getComputerUuid())
+                    }
+                    else {
+                        startStream(model.name, profileRow.profile)
+                    }
                 }
 
                 onClicked: {
@@ -313,6 +333,9 @@ ListView {
                     // be ignored.
                     if (!appTile.running) {
                         launchOrResumeSelectedApp(true)
+                    }
+                    else if (model.coherence) {
+                        appContextMenu.open()
                     }
                 }
 
@@ -335,11 +358,13 @@ ListView {
                     }
                 }
 
+                // NavigableItemDelegate clicks on Return first: coherence mode, running from that
+                // click on, opens its menu from onClicked alone
                 Keys.onReturnPressed: {
                     // Open the app context menu if activated via the gamepad or keyboard
                     // for running games. If the game isn't running, the above onClicked
                     // method will handle the launch.
-                    if (appTile.running) {
+                    if (appTile.running && !model.coherence) {
                         // This will be keyboard/gamepad driven so use
                         // open() instead of popup()
                         appContextMenu.open()
@@ -350,7 +375,7 @@ ListView {
                     // Open the app context menu if activated via the gamepad or keyboard
                     // for running games. If the game isn't running, the above onClicked
                     // method will handle the launch.
-                    if (appTile.running) {
+                    if (appTile.running && !model.coherence) {
                         // This will be keyboard/gamepad driven so use
                         // open() instead of popup()
                         appContextMenu.open()
@@ -370,7 +395,10 @@ ListView {
                 // A row stops its own streams, leaving the other rows' screens streaming; only
                 // a stream this window did not start (another device's) needs the app quit
                 function stopRowStreams() {
-                    if (StreamProcessManager.stopProfile(appModel.getComputerUuid(),
+                    if (model.coherence) {
+                        CoherenceManager.stop()
+                    }
+                    else if (StreamProcessManager.stopProfile(appModel.getComputerUuid(),
                                                          StreamProfiles.idOf(profileRow.profile ? profileRow.profile : {})) === 0) {
                         doQuitGame()
                     }
@@ -384,13 +412,14 @@ ListView {
 
                         NavigableMenuItem {
                             parentMenu: appContextMenu
-                            text: appTile.running ? qsTr("Resume Game") : qsTr("Launch Game")
+                            text: model.coherence ? qsTr("Start Coherence Mode") : appTile.running ? qsTr("Resume Game") : qsTr("Launch Game")
                             onTriggered: launchOrResumeSelectedApp(true)
+                            visible: !model.coherence || !appTile.running
                         }
                         NavigableMenuItem {
                             parentMenu: appContextMenu
-                            text: qsTr("Quit Game")
-                            onTriggered: doQuitGame()
+                            text: model.coherence ? qsTr("Stop Coherence Mode") : qsTr("Quit Game")
+                            onTriggered: model.coherence ? stopRowStreams() : doQuitGame()
                             visible: appTile.running
                         }
                         NavigableMenuItem {
@@ -400,6 +429,7 @@ ListView {
                             text: qsTr("Direct Launch")
                             onTriggered: appModel.setAppDirectLaunch(model.index, !model.directLaunch)
                             enabled: !model.hidden
+                            visible: !model.coherence
 
                             ToolTip.text: qsTr("Launch this app immediately when the host is selected, bypassing the app selection grid.")
                             ToolTip.delay: 1000
@@ -413,6 +443,7 @@ ListView {
                             text: qsTr("Hide Game")
                             onTriggered: appModel.setAppHidden(model.index, !model.hidden)
                             enabled: model.hidden || (!appTile.running && !model.directLaunch)
+                            visible: !model.coherence
 
                             ToolTip.text: qsTr("Hide this game from the app grid. To access hidden games, right-click on the host and choose %1.").arg(qsTr("View All Apps"))
                             ToolTip.delay: 1000
