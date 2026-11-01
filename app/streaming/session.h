@@ -3,6 +3,9 @@
 #include <QSemaphore>
 #include <QWindow>
 
+#include <atomic>
+#include <thread>
+
 #include <Limelight.h>
 #include <opus_multistream.h>
 #include "settings/streamingpreferences.h"
@@ -25,6 +28,12 @@
 #define SDL_CODE_MINIMIZE_WINDOW 108
 #define SDL_CODE_RESTORE_WINDOW 109
 
+// Coherence atlas: a newer host window list waits in m_LatestAtlasLayout
+#define SDL_CODE_ATLAS_LAYOUT 110
+
+class CoherenceAtlas;
+class CoherenceDock;
+struct NvHostWindow;
 class QuickMenuManager;
 class ServerCommandManager;
 class ClipboardManager;
@@ -295,6 +304,25 @@ private:
     NvComputer* m_Computer;
     NvApp m_App;
     SDL_Window* m_Window;
+
+    // Coherence mode: while the left button is held, the window follows its host window, which a
+    // drag through the host's title bar moves first
+    void followHostWindow(bool follow);
+    std::atomic<bool> m_FollowingHostWindow {false};
+    std::atomic<bool> m_HostWindowFollowerRunning {false};
+    std::thread m_HostWindowFollower;
+
+    // Coherence atlas: one window per host window, laid out as the host's window list says
+    CoherenceAtlas* m_CoherenceAtlas = nullptr;
+    CoherenceDock* m_CoherenceDock = nullptr;
+    void pollAtlasLayout(bool poll);
+    void handleAtlasWindowEvent(const SDL_WindowEvent& event);
+    void raiseAtlasWindow(Uint32 sdlWindowId);
+    void trackCommandTap(const SDL_KeyboardEvent& event);
+    bool m_CommandTapPending = false;
+    std::atomic<bool> m_AtlasPolling {false};
+    std::thread m_AtlasPoller;
+    std::atomic<QVector<NvHostWindow>*> m_LatestAtlasLayout {nullptr};
     IVideoDecoder* m_VideoDecoder;
     SDL_SpinLock m_DecoderLock;
     bool m_AudioDisabled;

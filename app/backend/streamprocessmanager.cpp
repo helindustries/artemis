@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
+#include <QRect>
 #include <QTimer>
 
 // How long a stream process gets to end its session after "stop" before it is killed
@@ -79,6 +80,14 @@ QString StreamProcessManager::start(const QString& hostUuid, const QString& host
                   << "--window-title" << profile.value("windowTitle").toString()
                   << "--window-position" << QString("%1,%2").arg(profile.value("windowX").toInt())
                                                             .arg(profile.value("windowY").toInt());
+        if (const QRect area = profile.value("coherenceArea").toRect(); area.isValid()) {
+            arguments << "--coherence-area" << QString("%1,%2,%3,%4").arg(area.x()).arg(area.y()).arg(area.width()).arg(area.height());
+        }
+    }
+    else if (profile.value("coherenceAtlas").toBool()) {
+        const QRect area = profile.value("coherenceArea").toRect();
+        arguments << "--coherence-atlas"
+                  << "--coherence-area" << QString("%1,%2,%3,%4").arg(area.x()).arg(area.y()).arg(area.width()).arg(area.height());
     }
     if (profile.value("absoluteMouse").toBool()) {
         arguments << "--absolute-mouse";

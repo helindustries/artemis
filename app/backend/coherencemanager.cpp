@@ -5,13 +5,17 @@
 #include "streamprocessmanager.h"
 #include "settings/streamingpreferences.h"
 
+#include <QCryptographicHash>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QScreen>
+#include <QSettings>
 #include <QLocalSocket>
 #include <QReadLocker>
 #include <QThreadPool>
+
+#include <algorithm>
 
 // How often the host's window list is read while coherence mode runs
 #define POLL_INTERVAL_MS 2000
@@ -32,8 +36,10 @@
 
 static QString handOffServerName()
 {
-    // Unix sockets live in the user's temp directory, Windows pipes are global: name the user
-    return QString("artemis-coherence-%1").arg(qEnvironmentVariable("USER", qEnvironmentVariable("USERNAME")));
+    // Unix sockets live in the user's temp directory, Windows pipes are global: name the user,
+    // and the settings, so a portable copy with its own is a window of its own
+    const QByteArray settings = QCryptographicHash::hash(QSettings().fileName().toUtf8(), QCryptographicHash::Md5).toHex().left(8);
+    return QString("artemis-coherence-%1-%2").arg(qEnvironmentVariable("USER", qEnvironmentVariable("USERNAME")), QString::fromLatin1(settings));
 }
 
 CoherenceManager::CoherenceManager(ComputerManager* computerManager, StreamProcessManager* streams, QObject* parent)
@@ -92,6 +98,22 @@ void CoherenceManager::handleHandOff()
     }
 }
 
+QVector<QRect> CoherenceManager::screenAreas()
+{
+    QVector<QRect> areas;
+    QScreen* primary = QGuiApplication::primaryScreen();
+    areas.append(primary->availableGeometry());
+    QList<QScreen*> others = QGuiApplication::screens();
+    others.removeAll(primary);
+    std::sort(others.begin(), others.end(), [](const QScreen* first, const QScreen* second) {
+        return std::make_pair(first->geometry().x(), first->geometry().y()) < std::make_pair(second->geometry().x(), second->geometry().y());
+    });
+    for (const QScreen* screen : others) {
+        areas.append(screen->availableGeometry());
+    }
+    return areas;
+}
+
 QString CoherenceManager::hostName() const
 {
     return m_Computer != nullptr ? m_Computer->name : QString();
@@ -129,6 +151,10 @@ void CoherenceManager::stop()
         m_Streams->stopStream(stream.streamId);
     }
     m_StreamOfWindow.clear();
+    if (!m_AtlasStreamId.isEmpty()) {
+        m_Streams->stopStream(m_AtlasStreamId);
+        m_AtlasStreamId.clear();
+    }
     m_ListedWindows.clear();
     m_DismissedWindows.clear();
     m_PendingApp.clear();
@@ -158,8 +184,12 @@ void CoherenceManager::launchApp(const QString& hostUuid, const QString& appId)
 
 void CoherenceManager::openStartMenu()
 {
-    // Any of the host's window streams will do: the key goes to the host, not to its window
-    if (m_StreamOfWindow.isEmpty()) {
+    // An atlas host presses its coherence screen's Start button: the Start key opens the menu
+    // on the host's primary display. Without one, any window stream sends the key
+    if (!m_AtlasStreamId.isEmpty()) {
+        requestHost("open its Start menu", [](NvHTTP& http) { http.openCoherenceStartMenu(); });
+    }
+    else if (m_StreamOfWindow.isEmpty()) {
         qWarning() << "Expected a window stream of" << hostName() << "to send the start menu key through, there is none";
     }
     else {
@@ -205,13 +235,22 @@ void CoherenceManager::poll()
                 m_ReachDeadline.setRemainingTime(REACH_GRACE_MS);
             }
             m_Polling = true;
-            m_ScreenArea = QGuiApplication::primaryScreen()->availableGeometry();
-            QThreadPool::globalInstance()->start([this, computer = m_Computer, hostUuid = m_HostUuid, screenSize = m_ScreenArea.size()]() {
+            m_Screens = screenAreas();
+            m_ScreenArea = QRect();
+            for (const QRect& screen : m_Screens) {
+                m_ScreenArea = m_ScreenArea.united(screen);
+            }
+            QVector<QRect> screens;
+            for (const QRect& screen : m_Screens) {
+                screens.append(screen.translated(-m_ScreenArea.topLeft()));
+            }
+            QThreadPool::globalInstance()->start([this, computer = m_Computer, hostUuid = m_HostUuid, screens]() {
                 try {
                     NvHTTP http(computer);
                     bool onScreen = false;
-                    const QVector<NvHostWindow> windows = http.getWindows(screenSize, &onScreen);
-                    QMetaObject::invokeMethod(this, [this, hostUuid, windows, onScreen]() { handleWindows(hostUuid, windows, onScreen); },
+                    QSize atlasSize;
+                    const QVector<NvHostWindow> windows = http.getWindows(screens, &onScreen, &atlasSize);
+                    QMetaObject::invokeMethod(this, [this, hostUuid, windows, onScreen, atlasSize]() { handleWindows(hostUuid, windows, onScreen, atlasSize); },
                                               Qt::QueuedConnection);
                 } catch (const GfeHttpResponseException& e) {
                     QMetaObject::invokeMethod(this, [this, hostUuid, detail = e.toQString()]() { handleError(hostUuid, detail); },
@@ -225,9 +264,17 @@ void CoherenceManager::poll()
     }
 }
 
-void CoherenceManager::handleWindows(const QString& hostUuid, QVector<NvHostWindow> windows, bool onScreen)
+void CoherenceManager::handleWindows(const QString& hostUuid, QVector<NvHostWindow> windows, bool onScreen, QSize atlasSize)
 {
     m_Polling = false;
+
+    // A host with an atlas streams all its windows at once, and the atlas stream lays them out
+    // itself; only macOS shows an atlas yet
+#ifdef Q_OS_DARWIN
+    const bool atlas = atlasSize.isValid();
+#else
+    const bool atlas = false;
+#endif
 
     // Gathered on the host's coherence screen, a window sits where it sits on that screen, one
     // host pixel per point of our free area; a host without one reports its desktop positions
@@ -251,30 +298,37 @@ void CoherenceManager::handleWindows(const QString& hostUuid, QVector<NvHostWind
             m_PendingApp.clear();
         }
 
-        m_ListedWindows.clear();
-        for (const NvHostWindow& window : windows) {
-            m_ListedWindows.insert(window.id);
-        }
-
-        for (auto iter = m_StreamOfWindow.begin(); iter != m_StreamOfWindow.end();) {
-            if (!m_ListedWindows.contains(iter.key())) {
-                m_Streams->stopStream(iter->streamId);
-                iter = m_StreamOfWindow.erase(iter);
-            }
-            else {
-                ++iter;
+        if (atlas) {
+            if (m_AtlasStreamId.isEmpty()) {
+                m_AtlasStreamId = startAtlasStream(atlasSize);
             }
         }
-        m_DismissedWindows.intersect(m_ListedWindows);
-
-        for (const NvHostWindow& window : windows) {
-            if (auto tracked = m_StreamOfWindow.find(window.id); tracked != m_StreamOfWindow.end()) {
-                followWindow(*tracked, window);
+        else {
+            m_ListedWindows.clear();
+            for (const NvHostWindow& window : windows) {
+                m_ListedWindows.insert(window.id);
             }
-            // A minimized window has nothing to capture until it is restored
-            else if (!m_DismissedWindows.contains(window.id) && !window.minimized &&
-                     window.width >= MIN_WINDOW_SIZE && window.height >= MIN_WINDOW_SIZE) {
-                m_StreamOfWindow.insert(window.id, { startStream(window), window });
+
+            for (auto iter = m_StreamOfWindow.begin(); iter != m_StreamOfWindow.end();) {
+                if (!m_ListedWindows.contains(iter.key())) {
+                    m_Streams->stopStream(iter->streamId);
+                    iter = m_StreamOfWindow.erase(iter);
+                }
+                else {
+                    ++iter;
+                }
+            }
+            m_DismissedWindows.intersect(m_ListedWindows);
+
+            for (const NvHostWindow& window : windows) {
+                if (auto tracked = m_StreamOfWindow.find(window.id); tracked != m_StreamOfWindow.end()) {
+                    followWindow(*tracked, window);
+                }
+                // A minimized window has nothing to capture until it is restored
+                else if (!m_DismissedWindows.contains(window.id) && !window.minimized &&
+                         window.width >= MIN_WINDOW_SIZE && window.height >= MIN_WINDOW_SIZE) {
+                    m_StreamOfWindow.insert(window.id, { startStream(window), window });
+                }
             }
         }
     }
@@ -304,6 +358,13 @@ void CoherenceManager::handleError(const QString& hostUuid, const QString& detai
 
 void CoherenceManager::handleStreamEnded(const QString& streamId)
 {
+    // The atlas stream is all of coherence mode: quitting it ends the mode, and a crash would
+    // only crash again
+    if (!m_AtlasStreamId.isEmpty() && streamId == m_AtlasStreamId) {
+        m_AtlasStreamId.clear();
+        stop();
+    }
+
     // A window whose stream was stopped because it went is no longer here; one still listed
     // was closed by the user
     for (auto iter = m_StreamOfWindow.begin(); iter != m_StreamOfWindow.end(); ++iter) {
@@ -335,8 +396,8 @@ void CoherenceManager::followWindow(WindowStream& stream, const NvHostWindow& wi
     }
     else if (!window.minimized && (window.x != last.x || window.y != last.y)) {
         m_Streams->commandStream(stream.streamId, { { "command", "move" },
-                                                    { "dx", window.x - last.x },
-                                                    { "dy", window.y - last.y } });
+                                                    { "x", window.x },
+                                                    { "y", window.y } });
     }
 }
 
@@ -373,20 +434,42 @@ void CoherenceManager::refreshLaunchers()
     });
 }
 
+QString CoherenceManager::runningAppName(QString& hostName) const
+{
+    QString appName = "Desktop";
+    // The stream joins whatever runs on the host instead of asking to quit it
+    QReadLocker lock(&m_Computer->lock);
+    hostName = m_Computer->name;
+    for (const NvApp& app : m_Computer->appList) {
+        if (m_Computer->currentGameId != 0 && app.id == m_Computer->currentGameId) {
+            appName = app.name;
+        }
+    }
+    return appName;
+}
+
+QString CoherenceManager::startAtlasStream(const QSize& atlasSize)
+{
+    QString hostName;
+    const QString appName = runningAppName(hostName);
+    const int fps = StreamingPreferences::get()->fps;
+    const QVariantMap profile {
+        { "width", atlasSize.width() },
+        { "height", atlasSize.height() },
+        { "fps", fps },
+        { "bitrateKbps", StreamingPreferences::getDefaultBitrate(atlasSize.width(), atlasSize.height(), fps, false) },
+        { "displayMode", "windowed" },
+        { "coherenceAtlas", true },
+        { "coherenceArea", m_ScreenArea },
+        { "absoluteMouse", true },
+    };
+    return m_Streams->start(m_HostUuid, hostName, appName, profile);
+}
+
 QString CoherenceManager::startStream(const NvHostWindow& window)
 {
     QString hostName;
-    QString appName = "Desktop";
-    {
-        // The stream joins whatever runs on the host instead of asking to quit it
-        QReadLocker lock(&m_Computer->lock);
-        hostName = m_Computer->name;
-        for (const NvApp& app : m_Computer->appList) {
-            if (m_Computer->currentGameId != 0 && app.id == m_Computer->currentGameId) {
-                appName = app.name;
-            }
-        }
-    }
+    const QString appName = runningAppName(hostName);
 
     const int width = window.width & ~1;
     const int height = window.height & ~1;
@@ -402,6 +485,7 @@ QString CoherenceManager::startStream(const NvHostWindow& window)
         // Where the host has it: windows keep their arrangement, one host pixel per point
         { "windowX", window.x },
         { "windowY", window.y },
+        { "coherenceArea", m_ScreenArea },
         { "absoluteMouse", true },
     };
     return m_Streams->start(m_HostUuid, hostName, appName, profile);

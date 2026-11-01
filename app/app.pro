@@ -434,11 +434,22 @@ macx {
         streaming/video/ffmpeg-renderers/vt_base.mm \
         streaming/video/ffmpeg-renderers/vt_avsamplelayer.mm \
         streaming/video/ffmpeg-renderers/vt_metal.mm \
+        streaming/coherenceatlas.mm \
+        streaming/coherencedock.cpp \
         streaming/macprocess.mm
 
     HEADERS += \
         streaming/video/ffmpeg-renderers/vt.h \
+        streaming/coherenceatlas.h \
+        streaming/coherencedock.h \
         streaming/macprocess.h
+
+    # The Dock icon app coherence mode copies once per host program; a separate executable, as
+    # each copy is a process of its own
+    DOCK_TILE_SOURCE = $$PWD/streaming/coherencedocktile.m
+    QMAKE_POST_LINK += xcrun clang -fobjc-arc -O2 -mmacosx-version-min=$$QMAKE_MACOSX_DEPLOYMENT_TARGET \
+        -framework AppKit $$shell_quote($$DOCK_TILE_SOURCE) \
+        -o $$shell_quote($$OUT_PWD/$${TARGET}.app/Contents/MacOS/ArtemisDockTile)
 }
 soundio {
     message(libsoundio audio renderer selected)

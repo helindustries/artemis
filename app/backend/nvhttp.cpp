@@ -282,6 +282,9 @@ NvHTTP::startApp(QString verb,
     if (prefs->windowId != 0) {
         allParams += "&windowId=" + QString::number(prefs->windowId);
     }
+    else if (prefs->coherenceAtlas) {
+        allParams += "&coherenceAtlas=1";
+    }
 
     // Add Limelight parameters
     allParams += LiGetLaunchUrlQueryParameters();
@@ -394,11 +397,15 @@ NvHTTP::getAppList()
 }
 
 QVector<NvHostWindow>
-NvHTTP::getWindows(QSize screenSize, bool* onScreen)
+NvHTTP::getWindows(const QVector<QRect>& screens, bool* onScreen, QSize* atlasSize)
 {
+    QStringList areas;
+    for (const QRect& screen : screens) {
+        areas.append(QString("%1,%2,%3,%4").arg(screen.x()).arg(screen.y()).arg(screen.width()).arg(screen.height()));
+    }
     QString arguments;
-    if (screenSize.isValid()) {
-        arguments = QString("screenWidth=%1&screenHeight=%2").arg(screenSize.width()).arg(screenSize.height());
+    if (!areas.isEmpty()) {
+        arguments = "screens=" + areas.join(';');
     }
     QString windowsXml = openConnectionToString(m_BaseUrlHttps,
                                                 "windows",
@@ -412,6 +419,9 @@ NvHTTP::getWindows(QSize screenSize, bool* onScreen)
     if (onScreen != nullptr) {
         *onScreen = false;
     }
+    if (atlasSize != nullptr) {
+        *atlasSize = QSize();
+    }
     while (!xmlReader.atEnd()) {
         while (xmlReader.readNextStartElement()) {
             auto name = xmlReader.name();
@@ -422,8 +432,30 @@ NvHTTP::getWindows(QSize screenSize, bool* onScreen)
                 *onScreen = true;
                 xmlReader.skipCurrentElement();
             }
+            // The atlas size comes before the windows, which name their region in it alike
+            else if (windows.isEmpty() && name == QString("AtlasWidth") && atlasSize != nullptr) {
+                atlasSize->setWidth(xmlReader.readElementText().toInt());
+            }
+            else if (windows.isEmpty() && name == QString("AtlasHeight") && atlasSize != nullptr) {
+                atlasSize->setHeight(xmlReader.readElementText().toInt());
+            }
             else if (windows.isEmpty()) {
                 continue;
+            }
+            else if (name == QString("Popup")) {
+                windows.last().popup = xmlReader.readElementText() == "1";
+            }
+            else if (name == QString("AtlasX")) {
+                windows.last().atlas.moveLeft(xmlReader.readElementText().toInt());
+            }
+            else if (name == QString("AtlasY")) {
+                windows.last().atlas.moveTop(xmlReader.readElementText().toInt());
+            }
+            else if (name == QString("AtlasWidth")) {
+                windows.last().atlas.setWidth(xmlReader.readElementText().toInt());
+            }
+            else if (name == QString("AtlasHeight")) {
+                windows.last().atlas.setHeight(xmlReader.readElementText().toInt());
             }
             else if (name == QString("ID")) {
                 windows.last().id = xmlReader.readElementText().toULongLong();
@@ -489,6 +521,20 @@ NvHTTP::getPinnedApps()
 }
 
 QImage
+NvHTTP::getWindowIcon(quint64 id)
+{
+    QNetworkReply* reply = openConnection(m_BaseUrlHttps,
+                                          "windows/icon",
+                                          "id=" + QString::number(id),
+                                          ICON_TIMEOUT_MS,
+                                          NvLogLevel::NVLL_ERROR);
+    QImage image = QImageReader(reply).read();
+    delete reply;
+
+    return image;
+}
+
+QImage
 NvHTTP::getPinnedAppIcon(const QString& id)
 {
     QNetworkReply* reply = openConnection(m_BaseUrlHttps,
@@ -522,6 +568,38 @@ NvHTTP::raiseWindow(quint64 id)
                            NvLogLevel::NVLL_ERROR);
 }
 
+QRect
+NvHTTP::getWindowPosition(quint64 id)
+{
+    QString positionXml = openConnectionToString(m_BaseUrlHttps,
+                                                 "windows/position",
+                                                 "id=" + QString::number(id),
+                                                 REQUEST_TIMEOUT_MS,
+                                                 NvLogLevel::NVLL_ERROR);
+    verifyResponseStatus(positionXml);
+
+    QRect position;
+    QXmlStreamReader xmlReader(positionXml);
+    while (!xmlReader.atEnd()) {
+        while (xmlReader.readNextStartElement()) {
+            auto name = xmlReader.name();
+            if (name == QString("X")) {
+                position.moveLeft(xmlReader.readElementText().toInt());
+            }
+            else if (name == QString("Y")) {
+                position.moveTop(xmlReader.readElementText().toInt());
+            }
+            else if (name == QString("Width")) {
+                position.setWidth(xmlReader.readElementText().toInt());
+            }
+            else if (name == QString("Height")) {
+                position.setHeight(xmlReader.readElementText().toInt());
+            }
+        }
+    }
+    return position;
+}
+
 void
 NvHTTP::stopCoherence()
 {
@@ -533,11 +611,25 @@ NvHTTP::stopCoherence()
 }
 
 void
-NvHTTP::resizeWindow(quint64 id, int width, int height)
+NvHTTP::openCoherenceStartMenu()
 {
     openConnectionToString(m_BaseUrlHttps,
+                           "actions/coherence",
+                           "op=startmenu",
+                           REQUEST_TIMEOUT_MS,
+                           NvLogLevel::NVLL_ERROR);
+}
+
+void
+NvHTTP::resizeWindow(quint64 id, int width, int height, const QPoint* position)
+{
+    QString arguments = QString("op=resize&id=%1&width=%2&height=%3").arg(id).arg(width).arg(height);
+    if (position != nullptr) {
+        arguments += QString("&x=%1&y=%2").arg(position->x()).arg(position->y());
+    }
+    openConnectionToString(m_BaseUrlHttps,
                            "actions/window",
-                           QString("op=resize&id=%1&width=%2&height=%3").arg(id).arg(width).arg(height),
+                           arguments,
                            REQUEST_TIMEOUT_MS,
                            NvLogLevel::NVLL_ERROR);
 }

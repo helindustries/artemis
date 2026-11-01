@@ -7,6 +7,7 @@
 
 #include <SDL_syswm.h>
 #include <Limelight.h>
+#include "streaming/coherenceatlas.h"
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
 #include "path.h"
@@ -214,7 +215,8 @@ public:
 
     virtual void waitToRender() override
     { @autoreleasepool {
-        if (!m_NextDrawable) {
+        // The coherence atlas draws into its windows' layers; this window is not shown
+        if (!m_NextDrawable && !CoherenceAtlas::isActive()) {
             // Wait for the next available drawable before latching the frame to render
             m_NextDrawable = [[m_MetalLayer nextDrawable] retain];
             if (m_NextDrawable == nullptr) {
@@ -502,7 +504,8 @@ public:
         }
 
         // Don't proceed with rendering if we don't have a drawable
-        if (m_NextDrawable == nullptr) {
+        const bool atlas = CoherenceAtlas::isActive();
+        if (m_NextDrawable == nullptr && !atlas) {
             return;
         }
 
@@ -551,6 +554,11 @@ public:
                     return;
                 }
             }
+        }
+
+        if (atlas) {
+            renderAtlas(frame, cvMetalTextures, planes);
+            return;
         }
 
         // Prepare a render pass to render into the next drawable
@@ -654,6 +662,71 @@ public:
         [m_NextDrawable release];
         m_NextDrawable = nullptr;
     }}
+
+    // Coherence mode in one stream: each window shows its part of the frame, one pixel of the
+    // host's per point
+    void renderAtlas(AVFrame* frame, std::array<CVMetalTextureRef, MAX_VIDEO_PLANES>& cvMetalTextures, size_t planes)
+    {
+        const QVector<CoherenceAtlas::Target> targets = CoherenceAtlas::takeTargets();
+        auto commandBuffer = [m_CommandQueue commandBuffer];
+        for (const CoherenceAtlas::Target& target : targets) {
+            CAMetalLayer* layer = (CAMetalLayer*)target.metalLayer;
+            if (layer.device != m_MetalLayer.device) {
+                layer.device = m_MetalLayer.device;
+            }
+            if (layer.pixelFormat != m_MetalLayer.pixelFormat) {
+                layer.pixelFormat = m_MetalLayer.pixelFormat;
+            }
+            if (layer.colorspace != m_MetalLayer.colorspace) {
+                layer.colorspace = m_MetalLayer.colorspace;
+            }
+
+            id<CAMetalDrawable> drawable = [layer nextDrawable];
+            if (drawable != nil) {
+                auto renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+                renderPassDescriptor.colorAttachments[0].texture = drawable.texture;
+                renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+                renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+                renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+                auto renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+                [renderEncoder setRenderPipelineState:m_VideoPipelineState];
+                for (size_t i = 0; i < planes; i++) {
+                    [renderEncoder setFragmentTexture:frame->format == AV_PIX_FMT_VIDEOTOOLBOX ?
+                                                          CVMetalTextureGetTexture(cvMetalTextures[i]) :
+                                                          mapPlaneForSoftwareFrame(frame, i)
+                                              atIndex:i];
+                }
+                [renderEncoder setFragmentBuffer:m_CscParamsBuffer offset:0 atIndex:0];
+
+                const float left = (float)target.source.left() / frame->width;
+                const float right = (float)(target.source.left() + target.source.width()) / frame->width;
+                const float top = (float)target.source.top() / frame->height;
+                const float bottom = (float)(target.source.top() + target.source.height()) / frame->height;
+                Vertex verts[] =
+                {
+                    { { -1.0f, -1.0f, 0.0f, 1.0f }, { left, bottom } },
+                    { { -1.0f, 1.0f, 0.0f, 1.0f }, { left, top } },
+                    { { 1.0f, -1.0f, 0.0f, 1.0f }, { right, bottom } },
+                    { { 1.0f, 1.0f, 0.0f, 1.0f }, { right, top } },
+                };
+                [renderEncoder setVertexBytes:verts length:sizeof(verts) atIndex:0];
+                [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+                [renderEncoder endEncoding];
+                [commandBuffer presentDrawable:drawable];
+            }
+        }
+
+        if (frame->format == AV_PIX_FMT_VIDEOTOOLBOX) {
+            [commandBuffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+                for (size_t i = 0; i < planes; i++) {
+                    CFRelease(cvMetalTextures[i]);
+                }
+            }];
+        }
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+        CoherenceAtlas::releaseTargets(targets);
+    }
 
     id<MTLDevice> getMetalDevice() {
         if (qgetenv("VT_FORCE_METAL") == "0") {

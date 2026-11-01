@@ -6,6 +6,7 @@
 
 #include <Limelight.h>
 
+#include <QRect>
 #include <QSize>
 #include <QUrl>
 #include <QNetworkAccessManager>
@@ -40,6 +41,10 @@ struct NvHostWindow
     int width = 0;
     int height = 0;
     bool minimized = false;
+    // A menu, tooltip or other untitled window, shown over the others
+    bool popup = false;
+    // Its picture in the host's coherence atlas; empty when the atlas does not show it
+    QRect atlas;
 };
 
 // An app the host's user pinned, which coherence mode offers as a launcher here
@@ -207,16 +212,22 @@ public:
     QVector<NvApp>
     getAppList();
 
-    // With a screen size, the host gathers its windows on a screen of that size (coherence mode)
-    // and onScreen tells whether it did: positions are then relative to that screen
+    // With screens (their free areas relative to the top-left of all of them, the primary first),
+    // the host gathers its windows on screens of those sizes, arranged alike (coherence mode),
+    // and onScreen tells whether it did: positions are then relative to the screens. atlasSize is
+    // the size of the screens' atlas, invalid where the host draws none
     QVector<NvHostWindow>
-    getWindows(QSize screenSize = QSize(), bool* onScreen = nullptr);
+    getWindows(const QVector<QRect>& screens = {}, bool* onScreen = nullptr, QSize* atlasSize = nullptr);
 
     QVector<NvPinnedApp>
     getPinnedApps();
 
     QImage
     getPinnedAppIcon(const QString& id);
+
+    // Coherence mode: the icon of the program a host window belongs to
+    QImage
+    getWindowIcon(quint64 id);
 
     void
     launchPinnedApp(const QString& id);
@@ -225,12 +236,22 @@ public:
     void
     raiseWindow(quint64 id);
 
+    // Coherence mode: opens the host's Start menu on our coherence screen
     void
-    resizeWindow(quint64 id, int width, int height);
+    openCoherenceStartMenu();
+
+    // With a position (relative to the host's coherence screen), the window moves there too,
+    // as a resize by its left or top edge does
+    void
+    resizeWindow(quint64 id, int width, int height, const QPoint* position = nullptr);
 
     // Coherence mode ended: the host removes the screen it gathered our windows on
     void
     stopCoherence();
+
+    // Where a host window is on its coherence screen, relative to the screen's work area
+    QRect
+    getWindowPosition(quint64 id);
 
     QImage
     getBoxArt(int appId);

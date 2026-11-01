@@ -21,9 +21,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_PointerRegionLockToggledByUser(false),
       m_FakeCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
-      m_CoherenceWindow(prefs.windowId != 0),
-      // Coherence mode streams a host window without the host's pointer: ours is the pointer
-      m_MouseCursorCapturedVisibilityState(prefs.windowId != 0 ? SDL_ENABLE : SDL_DISABLE),
+      m_CoherenceWindow(prefs.windowId != 0 || prefs.coherenceAtlas),
+      m_CoherenceArea(prefs.coherenceArea),
+      m_CoherenceAtlas(prefs.coherenceAtlas),
+      // Coherence mode streams host windows without the host's pointer: ours is the pointer
+      m_MouseCursorCapturedVisibilityState(m_CoherenceWindow ? SDL_ENABLE : SDL_DISABLE),
       m_LongPressTimer(0),
       m_StreamWidth(streamWidth),
       m_StreamHeight(streamHeight),

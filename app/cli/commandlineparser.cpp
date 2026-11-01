@@ -381,6 +381,8 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addValueOption("window-id", "host window to stream on its own (coherence mode)");
     parser.addValueOption("window-title", "title of the host window, shown on this stream's window");
     parser.addValueOption("window-position", "where this stream's window opens, x,y (coherence mode)");
+    parser.addValueOption("coherence-area", "free screen area the host maps the pointer onto, x,y,width,height (coherence mode)");
+    parser.addFlagOption("coherence-atlas", "all of the host's windows in one stream, a window here for each (coherence mode)");
 
     if (!parser.parse(args)) {
         parser.showError(parser.errorText());
@@ -537,6 +539,28 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
         if (position.size() != 2 || !validX || !validY) {
             parser.showError("Window position must be x,y");
         }
+    }
+    if (parser.isSet("coherence-area")) {
+        const QStringList area = parser.value("coherence-area").split(',');
+        QVector<int> values;
+        for (const QString& value : area) {
+            bool valid = false;
+            values.append(value.toInt(&valid));
+            if (!valid) {
+                values.clear();
+                break;
+            }
+        }
+        if (values.size() == 4 && values[2] > 0 && values[3] > 0) {
+            preferences->coherenceArea = QRect(values[0], values[1], values[2], values[3]);
+        }
+        else {
+            parser.showError("Coherence area must be x,y,width,height");
+        }
+    }
+    preferences->coherenceAtlas = parser.isSet("coherence-atlas");
+    if (preferences->coherenceAtlas && !preferences->coherenceArea.isValid()) {
+        parser.showError("Coherence atlas needs the coherence area");
     }
 
     // This method will not return and terminates the process if --version or

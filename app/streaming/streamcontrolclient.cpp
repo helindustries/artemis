@@ -123,8 +123,10 @@ void StreamControlClient::handleCommand(const QJsonObject& message)
         event.user.code = command == "raise" ? SDL_CODE_RAISE_WINDOW :
                           command == "minimize" ? SDL_CODE_MINIMIZE_WINDOW :
                           command == "restore" ? SDL_CODE_RESTORE_WINDOW : SDL_CODE_MOVE_WINDOW;
-        event.user.data1 = (void*)(intptr_t)message["dx"].toInt();
-        event.user.data2 = (void*)(intptr_t)message["dy"].toInt();
+        // A move is absolute: the window also follows its host window itself while dragged, and a
+        // relative move from the main window's poll would add to that
+        event.user.data1 = (void*)(intptr_t)message["x"].toInt();
+        event.user.data2 = (void*)(intptr_t)message["y"].toInt();
         SDL_PushEvent(&event);
     }
     else if (command == "startmenu") {

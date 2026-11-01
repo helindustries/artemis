@@ -224,6 +224,11 @@ public:
     QString windowTitle;
     int windowX = INT_MIN;
     int windowY = INT_MIN;
+    // The free screen area the host gathers the windows for (menu bar and Dock excluded)
+    QRect coherenceArea;
+    // Coherence mode in one stream: the host's atlas of all its windows, which this stream
+    // process shows as one window per host window
+    bool coherenceAtlas = false;
 
 signals:
     void displayModeChanged();

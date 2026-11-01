@@ -134,7 +134,18 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
             }
         }
         if (mouseInVideoRegion || m_MouseWasInVideoRegion || m_PendingMouseButtonsAllUpOnVideoRegionLeave) {
-            LiSendMousePositionEvent((short)x, (short)y, dst.w, dst.h);
+            if (m_CoherenceArea.isValid()) {
+                // Where the pointer is on the free screen area, which the host maps onto its
+                // coherence screen: the window itself may be moving under it while dragged
+                int globalX, globalY;
+                SDL_GetGlobalMouseState(&globalX, &globalY);
+                LiSendMousePositionEvent((short)qBound(0, globalX - m_CoherenceArea.x(), m_CoherenceArea.width()),
+                                         (short)qBound(0, globalY - m_CoherenceArea.y(), m_CoherenceArea.height()),
+                                         m_CoherenceArea.width(), m_CoherenceArea.height());
+            }
+            else {
+                LiSendMousePositionEvent((short)x, (short)y, dst.w, dst.h);
+            }
         }
 
         // Adjust the cursor visibility if applicable
@@ -238,6 +249,11 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
 bool SdlInputHandler::isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth, int windowHeight)
 {
     SDL_Rect src, dst;
+
+    // Every coherence atlas window is all video; the pointer is in one whenever one has it
+    if (m_CoherenceAtlas) {
+        return SDL_GetMouseFocus() != nullptr;
+    }
 
     if (windowWidth < 0 || windowHeight < 0) {
         SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);

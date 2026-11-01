@@ -2,6 +2,9 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #ifdef Q_OS_DARWIN
+#include "backend/coherencemanager.h"
+#include "streaming/coherenceatlas.h"
+#include "streaming/coherencedock.h"
 #include "streaming/macprocess.h"
 #endif
 #include "backend/richpresencemanager.h"
@@ -52,6 +55,16 @@
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
 #define SDL_CODE_GAMECONTROLLER_SET_ADAPTIVE_TRIGGERS 105
 
+// A coherence window following its dragged host window asks this often, and again this soon after
+// a failed request: the host serves one request at a time for every window
+#define HOST_WINDOW_FOLLOW_INTERVAL_MS 33
+#define HOST_WINDOW_RETRY_MS 50
+
+// The coherence atlas asks the host where its windows are this often, and at the follow
+// interval while the left button is down: a drag through the host's title bar or border moves
+// and resizes a window there first
+#define ATLAS_LAYOUT_INTERVAL_MS 100
+
 #include <openssl/rand.h>
 
 #include <QtEndian>
@@ -85,6 +98,177 @@ CONNECTION_LISTENER_CALLBACKS Session::k_ConnCallbacks = {
 
 Session* Session::s_ActiveSession;
 QSemaphore Session::s_ActiveSessionSemaphore(1);
+
+void Session::followHostWindow(bool follow)
+{
+    if (follow && m_HostWindowFollowerRunning) {
+        // Still running from the last press: it keeps following, the main thread never waits for it
+        m_FollowingHostWindow = true;
+    }
+    else if (follow) {
+        if (m_HostWindowFollower.joinable()) {
+            m_HostWindowFollower.join();
+        }
+        m_FollowingHostWindow = true;
+        m_HostWindowFollowerRunning = true;
+        m_HostWindowFollower = std::thread([this, computer = m_Computer, windowId = m_Preferences->windowId, area = m_Preferences->coherenceArea]() {
+            // One more position once the button is up: where the drag ended. The button's state,
+            // not its release event, ends the drag: switching windows mid-drag loses the release
+            bool last = false;
+            while (!last) {
+                if (!(SDL_GetGlobalMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) {
+                    m_FollowingHostWindow = false;
+                }
+                last = !m_FollowingHostWindow;
+                try {
+                    NvHTTP http(computer);
+                    const QRect position = http.getWindowPosition(windowId);
+                    SDL_Event event = {};
+                    event.type = SDL_USEREVENT;
+                    event.user.code = SDL_CODE_MOVE_WINDOW;
+                    event.user.data1 = (void*)(intptr_t)(area.x() + position.x());
+                    event.user.data2 = (void*)(intptr_t)(area.y() + position.y());
+                    SDL_PushEvent(&event);
+                } catch (const GfeHttpResponseException& e) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Host window position unavailable: %s", qPrintable(e.toQString()));
+                    SDL_Delay(HOST_WINDOW_RETRY_MS);
+                } catch (const QtNetworkReplyException& e) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Host window position unavailable: %s", qPrintable(e.toQString()));
+                    SDL_Delay(HOST_WINDOW_RETRY_MS);
+                }
+                if (!last) {
+                    SDL_Delay(HOST_WINDOW_FOLLOW_INTERVAL_MS);
+                }
+            }
+            m_HostWindowFollowerRunning = false;
+        });
+    }
+    else if (!follow) {
+        m_FollowingHostWindow = false;
+    }
+}
+
+#ifdef Q_OS_DARWIN
+void Session::pollAtlasLayout(bool poll)
+{
+    if (poll && !m_AtlasPoller.joinable()) {
+        m_AtlasPolling = true;
+        // The screens as the main window sends them, relative to the area it gave this stream
+        QVector<QRect> screens;
+        for (const QRect& screen : CoherenceManager::screenAreas()) {
+            screens.append(screen.translated(-m_Preferences->coherenceArea.topLeft()));
+        }
+        m_AtlasPoller = std::thread([this, computer = m_Computer, screens]() {
+            bool failed = false;
+            while (m_AtlasPolling) {
+                try {
+                    // Only the newest list counts: one queued while AppKit holds the main thread
+                    // in a resize is stale by the time the event loop runs
+                    NvHTTP http(computer);
+                    auto* windows = new QVector<NvHostWindow>(http.getWindows(screens));
+                    CoherenceAtlas::refreshSources(*windows);
+                    if (QVector<NvHostWindow>* unapplied = m_LatestAtlasLayout.exchange(windows); unapplied != nullptr) {
+                        delete unapplied;
+                    }
+                    else {
+                        SDL_Event event = {};
+                        event.type = SDL_USEREVENT;
+                        event.user.code = SDL_CODE_ATLAS_LAYOUT;
+                        SDL_PushEvent(&event);
+                    }
+                    failed = false;
+                } catch (const GfeHttpResponseException& e) {
+                    if (!failed) {
+                        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Host window list unavailable: %s", qPrintable(e.toQString()));
+                    }
+                    failed = true;
+                } catch (const QtNetworkReplyException& e) {
+                    if (!failed) {
+                        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Host window list unavailable: %s", qPrintable(e.toQString()));
+                    }
+                    failed = true;
+                }
+                const bool dragging = (SDL_GetGlobalMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) != 0;
+                SDL_Delay(dragging ? HOST_WINDOW_FOLLOW_INTERVAL_MS : ATLAS_LAYOUT_INTERVAL_MS);
+            }
+        });
+    }
+    else if (!poll && m_AtlasPoller.joinable()) {
+        m_AtlasPolling = false;
+        m_AtlasPoller.join();
+        delete m_LatestAtlasLayout.exchange(nullptr);
+    }
+}
+
+void Session::raiseAtlasWindow(Uint32 sdlWindowId)
+{
+    // The window pressed or focused here comes to the front on the host before the press gets
+    // there, which would otherwise land in whatever covers it on the host. The host's own front
+    // window changes behind our back (a restored window comes up), so focus alone is not enough
+    if (const quint64 hostWindow = m_CoherenceAtlas->hostWindow(sdlWindowId);
+            hostWindow != 0 && hostWindow != m_CoherenceAtlas->frontWindow() && !m_CoherenceAtlas->isPopup(sdlWindowId)) {
+        try {
+            NvHTTP(m_Computer).raiseWindow(hostWindow);
+            m_CoherenceAtlas->setFrontWindow(hostWindow);
+        } catch (const GfeHttpResponseException& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected host window %llu to come to the front, but: %s", hostWindow, qPrintable(e.toQString()));
+        } catch (const QtNetworkReplyException& e) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected host window %llu to come to the front, but: %s", hostWindow, qPrintable(e.toQString()));
+        }
+    }
+}
+
+void Session::trackCommandTap(const SDL_KeyboardEvent& event)
+{
+    // A bare Command tap is the Start key, as a bare Win tap is on the host; the host's key
+    // remapping keeps the forwarded Win tap from opening Start on its primary display
+    const bool command = event.keysym.scancode == SDL_SCANCODE_LGUI || event.keysym.scancode == SDL_SCANCODE_RGUI;
+    if (event.type == SDL_KEYDOWN && !event.repeat) {
+        m_CommandTapPending = command;
+    }
+    else if (event.type == SDL_KEYUP && command && m_CommandTapPending) {
+        m_CommandTapPending = false;
+        QThreadPool::globalInstance()->start([computer = m_Computer]() {
+            try {
+                NvHTTP(computer).openCoherenceStartMenu();
+            } catch (const GfeHttpResponseException& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected the host's Start menu to open, but: %s", qPrintable(e.toQString()));
+            } catch (const QtNetworkReplyException& e) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "Expected the host's Start menu to open, but: %s", qPrintable(e.toQString()));
+            }
+        });
+    }
+}
+
+void Session::handleAtlasWindowEvent(const SDL_WindowEvent& event)
+{
+    // Focus moving between these windows is no focus loss; leaving Artemis is
+    switch (event.event) {
+    case SDL_WINDOWEVENT_FOCUS_LOST:
+        if (SDL_GetKeyboardFocus() == nullptr) {
+            // Start and menus close on the host when another window takes the click; one here
+            // that is not the host's never reaches it
+            if (m_CoherenceAtlas->hasPopups()) {
+                const short escape = 0x8000 | 0x1B;
+                LiSendKeyboardEvent2(escape, KEY_ACTION_DOWN, 0, 0);
+                LiSendKeyboardEvent2(escape, KEY_ACTION_UP, 0, 0);
+            }
+            m_InputHandler->notifyFocusLost();
+            if (m_ClipboardManager) {
+                m_ClipboardManager->onFocusLost();
+            }
+        }
+        break;
+    case SDL_WINDOWEVENT_FOCUS_GAINED:
+    case SDL_WINDOWEVENT_RESTORED:
+        raiseAtlasWindow(event.windowID);
+        break;
+    case SDL_WINDOWEVENT_LEAVE:
+        m_InputHandler->notifyMouseLeave();
+        break;
+    }
+}
+#endif
 
 void Session::clStageStarting(int stage)
 {
@@ -2119,12 +2303,27 @@ void Session::execInternal()
 #endif
 
 #ifdef Q_OS_DARWIN
-    if (m_Preferences->windowId != 0) {
+    // A window as large as the free area is maximized: Windows draws it without outline or rounded
+    // corners, and a shaped window would show the desktop through its edges
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(m_Window, &windowWidth, &windowHeight);
+    const bool maximized = m_Preferences->coherenceArea.isValid() &&
+                           qAbs(windowWidth - m_Preferences->coherenceArea.width()) <= 1 &&
+                           qAbs(windowHeight - m_Preferences->coherenceArea.height()) <= 1;
+    if (m_Preferences->windowId != 0 && !maximized) {
         SDL_SysWMinfo info;
         SDL_VERSION(&info.version);
         if (SDL_GetWindowWMInfo(m_Window, &info) && info.subsystem == SDL_SYSWM_COCOA) {
             MacProcess::shapeLikeHostWindow(info.info.cocoa.window);
         }
+    }
+
+    // The atlas shows the stream in windows of its own; this one only carries the renderer
+    if (m_Preferences->coherenceAtlas) {
+        CoherenceAtlas::hide(m_Window);
+        m_CoherenceAtlas = new CoherenceAtlas(m_Preferences->coherenceArea, m_Computer);
+        m_CoherenceDock = new CoherenceDock(m_Computer, m_Computer->name);
+        pollAtlasLayout(true);
     }
 #endif
 
@@ -2306,11 +2505,7 @@ void Session::execInternal()
                 SDL_RaiseWindow(m_Window);
                 break;
             case SDL_CODE_MOVE_WINDOW:
-                {
-                    int x, y;
-                    SDL_GetWindowPosition(m_Window, &x, &y);
-                    SDL_SetWindowPosition(m_Window, x + (int)(intptr_t)event.user.data1, y + (int)(intptr_t)event.user.data2);
-                }
+                SDL_SetWindowPosition(m_Window, (int)(intptr_t)event.user.data1, (int)(intptr_t)event.user.data2);
                 break;
             case SDL_CODE_MINIMIZE_WINDOW:
                 SDL_MinimizeWindow(m_Window);
@@ -2318,12 +2513,39 @@ void Session::execInternal()
             case SDL_CODE_RESTORE_WINDOW:
                 SDL_RestoreWindow(m_Window);
                 break;
+#ifdef Q_OS_DARWIN
+            case SDL_CODE_ATLAS_LAYOUT:
+                if (QVector<NvHostWindow>* windows = m_LatestAtlasLayout.exchange(nullptr); windows != nullptr) {
+                    if (m_CoherenceAtlas != nullptr) {
+                        m_CoherenceAtlas->apply(*windows);
+                        m_CoherenceDock->update(*windows);
+                    }
+                    delete windows;
+                }
+                break;
+            case SDL_CODE_DOCK_RAISE: {
+                auto* program = static_cast<QString*>(event.user.data1);
+                if (m_CoherenceAtlas != nullptr) {
+                    m_CoherenceAtlas->raiseProgram(*program);
+                }
+                delete program;
+                break;
+            }
+#endif
             default:
                 SDL_assert(false);
             }
             break;
 
         case SDL_WINDOWEVENT:
+#ifdef Q_OS_DARWIN
+            // The atlas's windows change size and come and go with the host's; the renderer
+            // stays as it is
+            if (m_CoherenceAtlas != nullptr && event.window.windowID != SDL_GetWindowID(m_Window)) {
+                handleAtlasWindowEvent(event.window);
+                break;
+            }
+#endif
             // Early handling of some events
             switch (event.window.event) {
             case SDL_WINDOWEVENT_FOCUS_LOST:
@@ -2546,12 +2768,26 @@ void Session::execInternal()
         case SDL_KEYUP:
         case SDL_KEYDOWN:
             presence.runCallbacks();
+#ifdef Q_OS_DARWIN
+            if (m_CoherenceAtlas != nullptr) {
+                trackCommandTap(event.key);
+            }
+#endif
             m_InputHandler->handleKeyEvent(&event.key);
             break;
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP:
             presence.runCallbacks();
+#ifdef Q_OS_DARWIN
+            if (m_CoherenceAtlas != nullptr && event.type == SDL_MOUSEBUTTONDOWN) {
+                m_CommandTapPending = false;
+                raiseAtlasWindow(event.button.windowID);
+            }
+#endif
             m_InputHandler->handleMouseButtonEvent(&event.button);
+            if (m_Preferences->windowId != 0 && m_Preferences->coherenceArea.isValid() && event.button.button == SDL_BUTTON_LEFT) {
+                followHostWindow(event.type == SDL_MOUSEBUTTONDOWN);
+            }
             break;
         case SDL_MOUSEMOTION:
             m_InputHandler->handleMouseMotionEvent(&event.motion);
@@ -2598,6 +2834,18 @@ void Session::execInternal()
     }
 
 DispatchDeferredCleanup:
+    followHostWindow(false);
+    if (m_HostWindowFollower.joinable()) {
+        m_HostWindowFollower.join();
+    }
+#ifdef Q_OS_DARWIN
+    pollAtlasLayout(false);
+    delete m_CoherenceDock;
+    m_CoherenceDock = nullptr;
+    delete m_CoherenceAtlas;
+    m_CoherenceAtlas = nullptr;
+#endif
+
     // Uncapture the mouse and hide the window immediately,
     // so we can return to the Qt GUI ASAP.
     m_InputHandler->setCaptureActive(false);

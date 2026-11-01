@@ -225,6 +225,10 @@ private:
     QStringList m_IgnoreDeviceGuids;
     StreamingPreferences::CaptureSysKeysMode m_CaptureSystemKeysMode;
     bool m_CoherenceWindow;
+    // The free screen area a coherence window's host maps the pointer onto; invalid otherwise
+    QRect m_CoherenceArea;
+    // The stream shows in the coherence atlas's windows, not in m_Window
+    bool m_CoherenceAtlas;
     int m_MouseCursorCapturedVisibilityState;
 
     struct {
