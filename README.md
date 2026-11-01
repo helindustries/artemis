@@ -20,7 +20,8 @@ Credits:
 - [Artemis Qt](https://github.com/wjbeckett/artemis) by wjbeckett: the base of this fork, with its
   own credits to Moonlight Qt and Artemis Android in the Attribution section below.
 
-The license stays GPL-3.0 as upstream. Everything below this section is upstream's README.
+The license stays GPL-3.0-or-later, as upstream. Everything below this section is upstream's
+README.
 
 ## 🙏 Attribution
 
