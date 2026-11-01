@@ -40,6 +40,10 @@
 #endif
 #endif
 
+#ifdef Q_OS_DARWIN
+#include <SDL_syswm.h>
+#endif
+
 
 #define SDL_CODE_FLUSH_WINDOW_EVENT_BARRIER 100
 #define SDL_CODE_GAMECONTROLLER_RUMBLE 101
@@ -2110,6 +2114,16 @@ void Session::execInternal()
                 ncPolicy = DWMNCRP_ENABLED;
                 DwmSetWindowAttribute(info.info.win.window, DWMWA_NCRENDERING_POLICY, &ncPolicy, sizeof(ncPolicy));
             }
+        }
+    }
+#endif
+
+#ifdef Q_OS_DARWIN
+    if (m_Preferences->windowId != 0) {
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+        if (SDL_GetWindowWMInfo(m_Window, &info) && info.subsystem == SDL_SYSWM_COCOA) {
+            MacProcess::shapeLikeHostWindow(info.info.cocoa.window);
         }
     }
 #endif
