@@ -9,6 +9,8 @@
 #include <QRect>
 #include <QTimer>
 
+#include <algorithm>
+
 // How long a stream process gets to end its session after "stop" before it is killed
 #define STOP_GRACE_MS 10000
 
@@ -164,6 +166,12 @@ int StreamProcessManager::stopProfile(const QString& hostUuid, const QString& pr
         }
     }
     return stopped;
+}
+
+bool StreamProcessManager::streamsTo(const QString& hostUuid) const
+{
+    return std::any_of(m_Streams.cbegin(), m_Streams.cend(),
+                       [&hostUuid](const Stream& stream) { return stream.hostUuid == hostUuid; });
 }
 
 void StreamProcessManager::commandStream(const QString& id, const QJsonObject& message)

@@ -160,6 +160,8 @@ int main(int argc, char* argv[])
     expect(manager.stopProfile("OTHER-HOST", "5f0c-macbook") == 0, "expected no stream stopped for another host");
     expect(manager.stopProfile("EB8319F3-HOST", "5f0c-macbook") == 1, "expected the profile's one stream stopped");
     expect(waitFor([&]() { return manager.count() == 1; }, 5000), "expected the other profile's stream to keep streaming");
+    expect(manager.streamsTo("EB8319F3-HOST") && !manager.streamsTo("OTHER-HOST"),
+           "expected the host of the remaining stream, and only it, to be streamed to");
     expect(manager.data(manager.index(0), StreamProcessManager::ProfileNameRole) == "MacBook" &&
            manager.stopProfile("EB8319F3-HOST", "9a1e-other") == 1,
            "expected the remaining stream to be the other profile's");

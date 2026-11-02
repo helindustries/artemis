@@ -45,6 +45,7 @@ public:
     // Stops the streams of one host started with this profile (StreamProfiles::idOf); returns
     // how many it stopped, so a caller can fall back to quitting the host's app
     Q_INVOKABLE int stopProfile(const QString& hostUuid, const QString& profileId);
+    Q_INVOKABLE bool streamsTo(const QString& hostUuid) const;
     // Sends a command (move, minimize, restore, ...) to the stream once it has connected
     void commandStream(const QString& id, const QJsonObject& message);
     Q_INVOKABLE void raise(int row);

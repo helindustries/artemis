@@ -393,13 +393,15 @@ ListView {
                 }
 
                 // A row stops its own streams, leaving the other rows' screens streaming; only
-                // a stream this window did not start (another device's) needs the app quit
+                // a stream this window did not start (another device's) needs the app quit.
+                // While another row streams the app, its quit would end that stream as well
                 function stopRowStreams() {
                     if (model.coherence) {
                         CoherenceManager.stop()
                     }
                     else if (StreamProcessManager.stopProfile(appModel.getComputerUuid(),
-                                                         StreamProfiles.idOf(profileRow.profile ? profileRow.profile : {})) === 0) {
+                                                         StreamProfiles.idOf(profileRow.profile ? profileRow.profile : {})) === 0 &&
+                             !StreamProcessManager.streamsTo(appModel.getComputerUuid())) {
                         doQuitGame()
                     }
                 }
