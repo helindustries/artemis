@@ -926,11 +926,6 @@ int main(int argc, char *argv[])
     }
 
     if (hasGUI) {
-#ifdef Q_OS_DARWIN
-        if (!windowStream) {
-            MacProcess::showInDock();
-        }
-#endif
         engine.rootContext()->setContextProperty("initialView", initialView);
         // The Qt window of a stream the Artemis window started stays hidden: that window shows
         // its progress, questions and errors

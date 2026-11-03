@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
@@ -13,6 +14,8 @@
 
 // How long a stream process gets to end its session after "stop" before it is killed
 #define STOP_GRACE_MS 10000
+// Relative to the main executable's directory, Contents/MacOS
+#define STREAM_HELPER_EXECUTABLE "../Helpers/Artemis Stream.app/Contents/MacOS/Artemis"
 
 StreamProcessManager::StreamProcessManager(QObject* parent)
     : QAbstractListModel(parent),
@@ -109,10 +112,10 @@ QString StreamProcessManager::start(const QString& hostUuid, const QString& host
     connect(stream.process, &QProcess::finished, this, [this, process = stream.process]() {
         handleProcessFinished(process);
     });
-    connect(stream.process, &QProcess::errorOccurred, this, [this, process = stream.process](QProcess::ProcessError error) {
+    const QString executable = streamExecutable();
+    connect(stream.process, &QProcess::errorOccurred, this, [this, process = stream.process, executable](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
-            qWarning() << "Expected to start stream process" << QCoreApplication::applicationFilePath()
-                       << "but:" << process->errorString();
+            qWarning() << "Expected to start stream process" << executable << "but:" << process->errorString();
             handleProcessFinished(process);
         }
     });
@@ -122,11 +125,27 @@ QString StreamProcessManager::start(const QString& hostUuid, const QString& host
     endInsertRows();
     emit countChanged();
 
-    stream.process->start(QCoreApplication::applicationFilePath(), arguments);
+    stream.process->start(executable, arguments);
     if (stream.reportsProgress) {
         emit streamStateChanged(stream.id, stream.hostName, stream.appName, stream.state, QString());
     }
     return stream.id;
+}
+
+QString StreamProcessManager::streamExecutable()
+{
+    QString executable = QCoreApplication::applicationFilePath();
+#ifdef Q_OS_DARWIN
+    // The bundle's agent app (app.pro), whose processes stay out of the Dock
+    if (const QString helper = QCoreApplication::applicationDirPath() + "/" + STREAM_HELPER_EXECUTABLE;
+            QFileInfo::exists(helper)) {
+        executable = helper;
+    }
+    else {
+        qWarning() << "Expected the stream helper at" << helper << "- streams will show in the Dock";
+    }
+#endif
+    return executable;
 }
 
 void StreamProcessManager::quitHostApp(const QString& id)

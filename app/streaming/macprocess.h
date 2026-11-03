@@ -3,11 +3,6 @@
 // Process-wide AppKit calls for stream processes, which the main window starts one per stream
 namespace MacProcess
 {
-    // Artemis.app is an agent app (LSUIElement), so a stream process the Artemis window starts
-    // never shows in the Dock or its recent apps; every other process makes itself a regular
-    // app with this. Needs the QGuiApplication to exist.
-    void showInDock();
-
     // Brings the process to the front; an accessory app is not activated by raising its window
     void activate();
 

@@ -20,8 +20,6 @@
 	<string>11.0.0</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>LSUIElement</key>
-	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>GCSupportedGameControllers</key>

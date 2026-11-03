@@ -452,6 +452,17 @@ macx {
     QMAKE_POST_LINK += xcrun clang -fobjc-arc -O2 -mmacosx-version-min=$$QMAKE_MACOSX_DEPLOYMENT_TARGET \
         -framework AppKit $$shell_quote($$DOCK_TILE_SOURCE) \
         -o $$shell_quote($$OUT_PWD/$${TARGET}.app/Contents/MacOS/ArtemisDockTile)
+
+    # The streams the window starts run as this agent app (LSUIElement) of their own, so they
+    # never show in the Dock or its recent apps, and clicking Artemis never lands on one. Its
+    # executable, frameworks, plugins and resources are the main bundle's
+    STREAM_HELPER = $$OUT_PWD/$${TARGET}.app/Contents/Helpers/Artemis Stream.app/Contents
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)mkdir -p $$shell_quote($$STREAM_HELPER/MacOS)
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)cp $$shell_quote($$PWD/StreamHelper-Info.plist) $$shell_quote($$STREAM_HELPER/Info.plist)
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)ln -sfn ../../../../MacOS/$${TARGET} $$shell_quote($$STREAM_HELPER/MacOS/$${TARGET})
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)ln -sfn ../../../Frameworks $$shell_quote($$STREAM_HELPER/Frameworks)
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)ln -sfn ../../../PlugIns $$shell_quote($$STREAM_HELPER/PlugIns)
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)ln -sfn ../../../Resources $$shell_quote($$STREAM_HELPER/Resources)
 }
 soundio {
     message(libsoundio audio renderer selected)

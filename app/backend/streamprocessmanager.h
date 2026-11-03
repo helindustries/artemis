@@ -86,6 +86,7 @@ private:
 
     // The row of the stream already running this app on this profile, -1 if none
     int runningRow(const QString& hostUuid, const QString& appName, const QVariantMap& profile) const;
+    static QString streamExecutable();
     void handleNewConnection();
     void handleSocketData(QLocalSocket* socket);
     void handleProcessFinished(QProcess* process);

@@ -9,11 +9,6 @@
 static const CGFloat HOST_WINDOW_OUTLINE = 2;
 static const CGFloat HOST_WINDOW_CORNER_RADIUS = 11;
 
-void MacProcess::showInDock()
-{
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-}
-
 void MacProcess::activate()
 {
     [NSApp activateIgnoringOtherApps:YES];

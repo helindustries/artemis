@@ -5,13 +5,18 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
+#include <QTimer>
 
 #include "SDL_compat.h"
 
 #include <Limelight.h>
 
+#include <cstdlib>
+
 // How long "startmenu" holds its key, as a person would
 #define START_MENU_KEY_HOLD_MS 80
+// How long a stream whose window went may take to end before it exits regardless
+#define ORPHAN_EXIT_MS 5000
 
 StreamControlClient::StreamControlClient(QString serverName, QString streamId)
     : m_Socket(nullptr),
@@ -69,6 +74,12 @@ void StreamControlClient::connectToServer()
         // with it, as it has no Dock icon or menu to be found and ended by
         qInfo() << "Stream control socket" << m_ServerName << "disconnected, ending the stream";
         endStream();
+        // A host request in flight runs a nested event loop the quit waits behind, up to its
+        // 100 s timeout, and meanwhile clicking Artemis only activates this windowless process
+        QTimer::singleShot(ORPHAN_EXIT_MS, []() {
+            qWarning() << "Stream process still running" << ORPHAN_EXIT_MS << "ms after its window went, exiting";
+            std::_Exit(0);
+        });
     });
 
     m_Socket->connectToServer(m_ServerName);
