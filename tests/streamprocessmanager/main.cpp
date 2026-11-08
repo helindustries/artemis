@@ -155,8 +155,12 @@ int main(int argc, char* argv[])
     otherProfile["id"] = "9a1e-other";
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", otherProfile);
-    waitFor([&]() { return manager.count() == 2 &&
-                           manager.data(manager.index(1), StreamProcessManager::StateRole) == "streaming"; }, 10000);
+    // Both connected: a stream stopped before its socket connects is terminated, which a
+    // windowless process on Windows ignores until the kill
+    expect(waitFor([&]() { return manager.count() == 2 &&
+                                  manager.data(manager.index(0), StreamProcessManager::StateRole) == "streaming" &&
+                                  manager.data(manager.index(1), StreamProcessManager::StateRole) == "streaming"; }, 10000),
+           "expected both profiles' streams to report streaming");
     expect(manager.stopProfile("OTHER-HOST", "5f0c-macbook") == 0, "expected no stream stopped for another host");
     expect(manager.stopProfile("EB8319F3-HOST", "5f0c-macbook") == 1, "expected the profile's one stream stopped");
     expect(waitFor([&]() { return manager.count() == 1; }, 5000), "expected the other profile's stream to keep streaming");
