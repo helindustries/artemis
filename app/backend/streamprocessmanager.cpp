@@ -33,7 +33,7 @@ StreamProcessManager::StreamProcessManager(QObject* parent)
 StreamProcessManager::~StreamProcessManager()
 {
     // A QProcess kills its process when destroyed, so the streams end with this window:
-    // ask them all to stop cleanly first, then kill what is left after the grace period.
+    // they are asked to stop cleanly first
     for (int row = 0; row < m_Streams.size(); row++) {
         m_Streams[row].process->disconnect(this);
         sendCommand(row, "stop");

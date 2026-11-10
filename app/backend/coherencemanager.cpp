@@ -21,7 +21,7 @@
 #define POLL_INTERVAL_MS 2000
 
 // How long a host may take to be found at all: a saved address from another network is no
-// address, and mDNS took a minute to find Heimdall at home on 2026-10-31
+// address, and mDNS can take a minute
 #define FIND_GRACE_MS 120000
 
 // How long a found host that was just woken may take to answer the first time

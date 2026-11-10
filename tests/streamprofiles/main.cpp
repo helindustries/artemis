@@ -50,7 +50,6 @@ int main(int argc, char* argv[])
     profiles.setProfilesForHost("HOST-2", "Heimdall-2",
                                 { profile("Ultrawide", "Not Connected", true), profile("Anywhere", "", true) });
 
-    // What is stored comes back as it went in
     QVariantList stored = profiles.profilesForHost("HOST-1");
     expect(stored.size() == 2, QString("expected 2 profiles for HOST-1, got %1").arg(stored.size()));
     expect(stored.value(0).toMap().value("name") == "Retina", "expected the profile order to be kept");
@@ -66,7 +65,6 @@ int main(int argc, char* argv[])
     expect(launch.value("app") == "Virtual Display", "expected the profile's app in the launch");
     expect(launch.value("profile").toMap().value("name") == "Retina", "expected the Retina profile");
 
-    // Replacing a host's profiles drops the old ones
     profiles.setProfilesForHost("HOST-1", "Heimdall", { profile("Plain", screen, false) });
     expect(profiles.profilesForHost("HOST-1").size() == 1, "expected the old profiles to be replaced");
     expect(profiles.allScreensLaunches().isEmpty(), "expected no launches once no profile qualifies");

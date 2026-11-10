@@ -108,7 +108,6 @@ int main(int argc, char* argv[])
 
     StreamProcessManager manager;
 
-    // A profile becomes the stream's options, and its state reaches the model
     QVariantMap profile { { "id", "5f0c-macbook" }, { "name", "MacBook" }, { "width", 1728 }, { "height", 1116 }, { "fps", 120 },
                           { "bitrateKbps", 40000 }, { "displayMode", "borderless" }, { "screen", "Built-in" } };
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
@@ -130,7 +129,6 @@ int main(int argc, char* argv[])
     }
     expect(!passed.contains("Heimdall"), QString("expected the host id, not its name, got %1").arg(passed.join(' ')));
 
-    // Stop ends it cleanly and it leaves the list
     QElapsedTimer stopTimer;
     stopTimer.start();
     manager.stop(0);
@@ -150,7 +148,6 @@ int main(int argc, char* argv[])
     manager.stop(0);
     waitFor([&]() { return manager.count() == 0; }, 5000);
 
-    // A profile row's stop ends that profile's stream on that host only
     QVariantMap otherProfile = profile;
     otherProfile["id"] = "9a1e-other";
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
@@ -171,7 +168,6 @@ int main(int argc, char* argv[])
            "expected the remaining stream to be the other profile's");
     waitFor([&]() { return manager.count() == 0; }, 5000);
 
-    // A stream that ignores stop is killed after the grace period and still leaves
     qputenv("FAKE_STREAM_DEAF", "1");
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
     waitFor([&]() { return manager.data(manager.index(0), StreamProcessManager::StateRole) == "streaming"; }, 10000);
@@ -179,7 +175,6 @@ int main(int argc, char* argv[])
     expect(waitFor([&]() { return manager.count() == 0; }, 15000), "expected a stream that ignores stop to be killed and leave the list");
     qunsetenv("FAKE_STREAM_DEAF");
 
-    // A stream that dies on its own leaves the list
     manager.start("EB8319F3-HOST", "Heimdall", "Desktop", profile);
     waitFor([&]() { return manager.data(manager.index(0), StreamProcessManager::StateRole) == "streaming"; }, 10000);
     QFile pidRecord(record + ".pid");

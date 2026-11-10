@@ -3,9 +3,9 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-// Measured on a mirrored Explorer at 2x: Windows' 1 px outline arrives smeared over 2 points by
-// the stream's scaling, and the corners follow a 10 px radius (8 px at the coherence screen's
-// 125%) whose centre sits 11 points in from the window's edges
+// At 2x Windows' 1 px outline arrives smeared over 2 points by the stream's scaling, and the
+// corners follow a 10 px radius (8 px at the coherence screen's 125%) whose centre sits 11
+// points in from the window's edges
 static const CGFloat HOST_WINDOW_OUTLINE = 2;
 static const CGFloat HOST_WINDOW_CORNER_RADIUS = 11;
 

@@ -23,7 +23,7 @@
 // The dock tile app inside Artemis.app, which each program's tile is a copy of
 #define DOCK_TILE_EXECUTABLE "ArtemisDockTile"
 
-// About 2 points at a 64 point Dock (Paul, 2026-11-01)
+// About 2 points at a 64 point Dock
 #define DOCK_ICON_MARGIN_PERCENT 3
 
 // The host's program icons come this large
